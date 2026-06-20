@@ -1,0 +1,138 @@
+<Window x:Class="ARK.UI.Views.AddMacroToQueueDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Добавить макрос в очередь"
+        Width="460" Height="490"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Brushes.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Buttons.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Inputs.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <!-- Margin 10 — место под GoldGlowEffect -->
+    <Border Margin="10">
+        <Border Background="{StaticResource ObsidianBackgroundBrush}"
+                BorderBrush="{StaticResource GoldBrush}"
+                BorderThickness="1.5"
+                CornerRadius="8"
+                Effect="{StaticResource GoldGlowEffect}">
+
+            <Grid Margin="16,12,16,16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- ── Заголовок + закрыть ── -->
+                <Grid Grid.Row="0" Margin="0,0,0,14"
+                      MouseLeftButtonDown="OnTitleBarDrag" Cursor="SizeAll">
+                    <TextBlock Text="Добавить макрос в очередь"
+                               Foreground="{StaticResource GoldBrush}"
+                               FontSize="13" FontWeight="SemiBold"
+                               FontFamily="Segoe UI"
+                               VerticalAlignment="Center"/>
+                    <Button Style="{StaticResource CloseButtonStyle}"
+                            HorizontalAlignment="Right"
+                            Width="24" Height="24" Padding="4"
+                            FontSize="12" Content="✕"
+                            Click="OnCloseClick"/>
+                </Grid>
+
+                <!-- ── Метка поиска ── -->
+                <TextBlock Grid.Row="1"
+                           Text="Поиск по имени макроса или профилю:"
+                           Foreground="#FF888888"
+                           FontSize="10"
+                           Margin="0,0,0,5"/>
+
+                <!-- ── Поле поиска ── -->
+                <TextBox Grid.Row="2" x:Name="SearchBox"
+                         Foreground="#FFF5D77F"
+                         Margin="0,0,0,10"
+                         TextChanged="OnSearchTextChanged"
+                         KeyDown="OnKeyDown"/>
+
+                <!-- ── Список макросов ── -->
+                <Border Grid.Row="3"
+                        BorderBrush="#FF2A2A2A" BorderThickness="1"
+                        CornerRadius="4" ClipToBounds="True"
+                        Margin="0,0,0,12">
+                    <ListBox x:Name="MacroList"
+                             Background="#FF0D0D0D"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             MouseDoubleClick="OnListDoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding"    Value="10,8"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd"
+                                                    Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#FF2E2500"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#FF141000"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}"
+                                               FontWeight="SemiBold" FontSize="12"
+                                               Foreground="#FFD4AF37"/>
+                                    <TextBlock Text="{Binding DisplayPath}"
+                                               FontSize="10" Foreground="#FF666666"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <!-- ── Кнопки ── -->
+                <StackPanel Grid.Row="4"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button Content="Отмена"
+                            Width="80" Margin="0,0,8,0"
+                            Click="OnCloseClick"/>
+                    <Button x:Name="AddButton"
+                            Content="Добавить"
+                            Width="90"
+                            Click="OnAddClick"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Border>
+</Window>

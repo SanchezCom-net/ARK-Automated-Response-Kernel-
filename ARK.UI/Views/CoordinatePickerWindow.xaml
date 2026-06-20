@@ -1,0 +1,30 @@
+<Window x:Class="ARK.UI.Views.CoordinatePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="#01000000"
+        WindowState="Maximized"
+        Topmost="True"
+        Cursor="Cross"
+        ShowInTaskbar="False">
+    <Canvas>
+        <Border x:Name="CoordsPanel"
+                Canvas.Left="20" Canvas.Top="20"
+                Background="#F0121212"
+                BorderBrush="#FFF5D77F"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10,6">
+            <StackPanel>
+                <TextBlock Text="ВЫБЕРИТЕ ТОЧКУ НА ЭКРАНЕ • ESC — ОТМЕНА"
+                           Foreground="#FF666666" FontFamily="Consolas" FontSize="8"
+                           Margin="0,0,0,4"/>
+                <TextBlock x:Name="CoordsText"
+                           Text="X: 0  Y: 0"
+                           Foreground="#FFF5D77F" FontFamily="Consolas"
+                           FontSize="12" FontWeight="Bold"/>
+            </StackPanel>
+        </Border>
+    </Canvas>
+</Window>

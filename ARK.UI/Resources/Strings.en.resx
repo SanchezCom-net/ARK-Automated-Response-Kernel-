@@ -1,0 +1,1307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Tray_OverlayToShow" xml:space="preserve">
+    <value>Open Overlay</value>
+  </data>
+  <data name="Tray_Exit" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="App_Starting" xml:space="preserve">
+    <value>Starting Automated Response Kernel...</value>
+  </data>
+  <data name="App_Exiting" xml:space="preserve">
+    <value>Stopping Kernel...</value>
+  </data>
+  <data name="Error_CriticalTitle" xml:space="preserve">
+    <value>Critical Error</value>
+  </data>
+  <data name="Error_CriticalMessage" xml:space="preserve">
+    <value>An unexpected error occurred in the ARK kernel. Details have been logged. The application will be closed.</value>
+  </data>
+  <data name="Tray_StatusActive" xml:space="preserve">
+    <value>ARK: KERNEL ACTIVE</value>
+  </data>
+  <data name="Tray_StatusPause" xml:space="preserve">
+    <value>ARK: KERNEL PAUSED</value>
+  </data>
+  <data name="Tray_ToggleOverlay" xml:space="preserve">
+    <value>Show Overlay</value>
+  </data>
+  <data name="Tray_OpenDashboard" xml:space="preserve">
+    <value>Dashboard</value>
+  </data>
+  <data name="Tray_NetworkConnected" xml:space="preserve">
+    <value>Network: CONNECTED</value>
+  </data>
+  <data name="Tray_NetworkDisconnected" xml:space="preserve">
+    <value>Network: DISCONNECTED</value>
+  </data>
+  <data name="Tray_RestartApp" xml:space="preserve">
+    <value>Restart ARK</value>
+  </data>
+  <data name="Tray_ToggleLanguage" xml:space="preserve">
+    <value>Language: ENGLISH</value>
+  </data>
+  <data name="Tray_ClearLogs" xml:space="preserve">
+    <value>Clear Log Files</value>
+  </data>
+  <data name="Tray_AutoStart" xml:space="preserve">
+    <value>Start with Windows</value>
+  </data>
+  <data name="Tray_ResetOverlay" xml:space="preserve">
+    <value>Reset Overlay</value>
+  </data>
+  <data name="Error_DuplicateNameTitle" xml:space="preserve">
+    <value>Name Error</value>
+  </data>
+  <data name="Error_DuplicateNameMessage" xml:space="preserve">
+    <value>An object named '{0}' already exists in this folder. Please choose a different name.</value>
+  </data>
+  <data name="Toolbox_Header" xml:space="preserve">
+    <value>NODES</value>
+  </data>
+  <data name="Toolbox_DragHint" xml:space="preserve">
+    <value>Drag a node onto the canvas</value>
+  </data>
+  <data name="Toolbox_DelayNode_Name" xml:space="preserve">
+    <value>Delay</value>
+  </data>
+  <data name="Toolbox_DelayNode_Desc" xml:space="preserve">
+    <value>Pauses execution for a specified number of milliseconds before proceeding</value>
+  </data>
+  <data name="Toolbox_OverlayNode_Name" xml:space="preserve">
+    <value>Overlay Text</value>
+  </data>
+  <data name="Toolbox_OverlayNode_Desc" xml:space="preserve">
+    <value>Displays a text message in the game overlay for a specified duration</value>
+  </data>
+  <data name="Toolbox_HotkeyNode_Name" xml:space="preserve">
+    <value>Hotkey Trigger</value>
+  </data>
+  <data name="Toolbox_HotkeyNode_Desc" xml:space="preserve">
+    <value>Pauses graph execution and waits for the assigned hotkey to be pressed</value>
+  </data>
+  <data name="Toolbox_SpeechTriggerNode_Name" xml:space="preserve">
+    <value>Voice Trigger</value>
+  </data>
+  <data name="Toolbox_WebRequestNode_Name" xml:space="preserve">
+    <value>Web Request</value>
+  </data>
+  <data name="Toolbox_WebRequestNode_Desc" xml:space="preserve">
+    <value>Performs an HTTP GET/POST request and passes the response via data wire</value>
+  </data>
+  <data name="Node_WebRequest_Method" xml:space="preserve">
+    <value>METHOD:</value>
+  </data>
+  <data name="Node_WebRequest_Url" xml:space="preserve">
+    <value>URL:</value>
+  </data>
+  <data name="Node_WebRequest_Body" xml:space="preserve">
+    <value>REQUEST BODY (POST):</value>
+  </data>
+  <data name="Toolbox_SpeechTriggerNode_Desc" xml:space="preserve">
+    <value>Launches a macro on a voice command. Supports multiple synonym phrases, word-order independent</value>
+  </data>
+  <data name="Node_SpeechTriggerPhrases" xml:space="preserve">
+    <value>TRIGGER PHRASES:</value>
+  </data>
+  <data name="Node_SpeechTriggerPlaceholder" xml:space="preserve">
+    <value>add phrase...</value>
+  </data>
+  <data name="Toolbox_SendInputNode_Name" xml:space="preserve">
+    <value>Key Emulation</value>
+  </data>
+  <data name="Toolbox_SendInputNode_Desc" xml:space="preserve">
+    <value>Programmatically presses keys in the active application</value>
+  </data>
+  <data name="Profile_SectionTitle" xml:space="preserve">
+    <value>PROCESS BINDING</value>
+  </data>
+  <data name="Profile_IsGlobal" xml:space="preserve">
+    <value>Global (no process binding)</value>
+  </data>
+  <data name="Profile_TargetProcess" xml:space="preserve">
+    <value>Process:</value>
+  </data>
+  <data name="Profile_RefreshProcesses" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Profile_FocusRequired" xml:space="preserve">
+    <value>Focus required</value>
+  </data>
+  <data name="Profile_WindowTitleFilter" xml:space="preserve">
+    <value>Title filter:</value>
+  </data>
+  <data name="Macro_Disable" xml:space="preserve">
+    <value>Disable macro</value>
+  </data>
+  <data name="Macro_Enable" xml:space="preserve">
+    <value>Enable macro</value>
+  </data>
+  <data name="Profile_SaveChanges" xml:space="preserve">
+    <value>Apply Changes</value>
+  </data>
+  <data name="Profile_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="Profile_Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="Export_PasswordTitle" xml:space="preserve">
+    <value>Export Password</value>
+  </data>
+  <data name="Export_PasswordPrompt" xml:space="preserve">
+    <value>Enter a password to encrypt the profile secrets (AES-256-GCM). Leave empty to export without encryption.</value>
+  </data>
+  <data name="Import_PasswordTitle" xml:space="preserve">
+    <value>Import Password</value>
+  </data>
+  <data name="Import_PasswordPrompt" xml:space="preserve">
+    <value>This profile is password-protected. Enter the password to decrypt.</value>
+  </data>
+  <data name="Export_SuccessTitle" xml:space="preserve">
+    <value>Export Complete</value>
+  </data>
+  <data name="Export_SuccessMessage" xml:space="preserve">
+    <value>Profile successfully exported to {0}</value>
+  </data>
+  <data name="Import_SuccessTitle" xml:space="preserve">
+    <value>Import Complete</value>
+  </data>
+  <data name="Import_SuccessMessage" xml:space="preserve">
+    <value>Profile "{0}" successfully imported.</value>
+  </data>
+  <data name="Error_ExportTitle" xml:space="preserve">
+    <value>Export Error</value>
+  </data>
+  <data name="Error_ImportTitle" xml:space="preserve">
+    <value>Import Error</value>
+  </data>
+  <data name="Error_WrongPassword" xml:space="preserve">
+    <value>Wrong password. Failed to decrypt the profile.</value>
+  </data>
+  <data name="Tray_RunPause" xml:space="preserve">
+    <value>⏸ Pause</value>
+  </data>
+  <data name="Explorer_Back" xml:space="preserve">
+    <value>← Back</value>
+  </data>
+  <data name="Explorer_EmptyTitle" xml:space="preserve">
+    <value>No items</value>
+  </data>
+  <data name="Explorer_EmptyHint" xml:space="preserve">
+    <value>Create your first item using the buttons above</value>
+  </data>
+  <data name="Explorer_CreateProfile" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="Explorer_CreateFolder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="Explorer_CreateRegion" xml:space="preserve">
+    <value>Queue group</value>
+  </data>
+  <data name="Explorer_CreateMacro" xml:space="preserve">
+    <value>Macro</value>
+  </data>
+  <data name="Explorer_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="Explorer_Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="Explorer_Paste" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="Explorer_SetPriority" xml:space="preserve">
+    <value>Set priority...</value>
+  </data>
+  <data name="Explorer_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Explorer_CtxCreateProfile" xml:space="preserve">
+    <value>Create program</value>
+  </data>
+  <data name="Explorer_CtxCreateFolder" xml:space="preserve">
+    <value>Create folder</value>
+  </data>
+  <data name="Explorer_CtxCreateRegion" xml:space="preserve">
+    <value>Create queue group</value>
+  </data>
+  <data name="Explorer_CtxCreateMacro" xml:space="preserve">
+    <value>Create macro</value>
+  </data>
+  <data name="Node_DelayMs" xml:space="preserve">
+    <value>Delay (ms)</value>
+  </data>
+  <data name="Node_DelayRandom" xml:space="preserve">
+    <value>Random delay</value>
+  </data>
+  <data name="Node_DelayMin" xml:space="preserve">
+    <value>From (ms)</value>
+  </data>
+  <data name="Node_DelayMax" xml:space="preserve">
+    <value>To (ms)</value>
+  </data>
+  <data name="Node_OverlayText" xml:space="preserve">
+    <value>Overlay text</value>
+  </data>
+  <data name="Node_DurationMs" xml:space="preserve">
+    <value>Duration (ms)</value>
+  </data>
+  <data name="Node_HotkeyHint" xml:space="preserve">
+    <value>Waiting for hotkey press during graph execution.</value>
+  </data>
+  <data name="Node_KeyLabel" xml:space="preserve">
+    <value>KEY</value>
+  </data>
+  <data name="Node_KeyInputHint" xml:space="preserve">
+    <value>Click and press a key combination</value>
+  </data>
+  <data name="Node_ModifiersLabel" xml:space="preserve">
+    <value>MODIFIERS</value>
+  </data>
+  <data name="Node_DelayAfterMs" xml:space="preserve">
+    <value>Delay after (ms)</value>
+  </data>
+  <data name="Node_SendInput_RandomDelay" xml:space="preserve">
+    <value>Random delay</value>
+  </data>
+  <data name="Node_SendInput_MinDelay" xml:space="preserve">
+    <value>Min (ms)</value>
+  </data>
+  <data name="Node_SendInput_MaxDelay" xml:space="preserve">
+    <value>Max (ms)</value>
+  </data>
+  <data name="Node_KeyTooltip" xml:space="preserve">
+    <value>Click to assign a key • Esc to clear</value>
+  </data>
+  <data name="Blueprint_ToolboxToggle" xml:space="preserve">
+    <value>Toggle node panel</value>
+  </data>
+  <data name="Blueprint_PropsToggle" xml:space="preserve">
+    <value>Toggle properties panel</value>
+  </data>
+  <data name="Blueprint_PropsHeader" xml:space="preserve">
+    <value>NODE PROPERTIES</value>
+  </data>
+  <data name="Blueprint_PropsEmpty" xml:space="preserve">
+    <value>Select a node on the canvas</value>
+  </data>
+  <data name="Blueprint_HotkeyLabel" xml:space="preserve">
+    <value>HOTKEY</value>
+  </data>
+  <data name="Blueprint_NodeCtxSetStart" xml:space="preserve">
+    <value>Set as start node</value>
+  </data>
+  <data name="Blueprint_NodeCtxDelete" xml:space="preserve">
+    <value>Delete node</value>
+  </data>
+  <data name="Blueprint_ConnectionDelete" xml:space="preserve">
+    <value>Delete connection</value>
+  </data>
+  <data name="Nav_Macros" xml:space="preserve">
+    <value>Macros</value>
+  </data>
+  <data name="Nav_Blueprint" xml:space="preserve">
+    <value>Blueprint</value>
+  </data>
+  <data name="Nav_Network" xml:space="preserve">
+    <value>Network / WS</value>
+  </data>
+  <data name="Nav_Logs" xml:space="preserve">
+    <value>Logs</value>
+  </data>
+  <data name="Dashboard_Close" xml:space="preserve">
+    <value>✕  Close</value>
+  </data>
+  <data name="Logs_Title" xml:space="preserve">
+    <value>Event log (today)</value>
+  </data>
+  <data name="Logs_Refresh" xml:space="preserve">
+    <value>↻  Refresh</value>
+  </data>
+  <data name="Logs_NoEntries" xml:space="preserve">
+    <value>(no entries for today)</value>
+  </data>
+  <data name="Logs_ReadError" xml:space="preserve">
+    <value>Log read error: {0}</value>
+  </data>
+  <data name="Logs_SearchPlaceholder" xml:space="preserve">
+    <value>Fuzzy log search...</value>
+  </data>
+  <data name="Blueprint_PortIn" xml:space="preserve">
+    <value>Input</value>
+  </data>
+  <data name="Blueprint_PortSuccess" xml:space="preserve">
+    <value>Output: Success →</value>
+  </data>
+  <data name="Blueprint_PortError" xml:space="preserve">
+    <value>Output: Error →</value>
+  </data>
+  <data name="Blueprint_PortData" xml:space="preserve">
+    <value>Data: Pass →</value>
+  </data>
+  <data name="Tray_RunPlay" xml:space="preserve">
+    <value>▶ Run</value>
+  </data>
+  <data name="Net_Header" xml:space="preserve">
+    <value>WebSocket Connection</value>
+  </data>
+  <data name="Net_ServerUrl" xml:space="preserve">
+    <value>Server URL</value>
+  </data>
+  <data name="Net_Connected" xml:space="preserve">
+    <value>CONNECTED</value>
+  </data>
+  <data name="Net_Disconnected" xml:space="preserve">
+    <value>DISCONNECTED</value>
+  </data>
+  <data name="Net_Reconnect" xml:space="preserve">
+    <value>⚡  Reconnect</value>
+  </data>
+  <data name="Toolbox_Category_SystemAndInput" xml:space="preserve">
+    <value>SYSTEM &amp; INPUT</value>
+  </data>
+  <data name="Toolbox_Category_UserInterface" xml:space="preserve">
+    <value>UI &amp; OVERLAY</value>
+  </data>
+  <data name="Toolbox_Category_NetworkAndApi" xml:space="preserve">
+    <value>NETWORK &amp; API</value>
+  </data>
+  <data name="Toolbox_Category_VisionAndAi" xml:space="preserve">
+    <value>VISION &amp; AI</value>
+  </data>
+  <data name="Toolbox_Category_OBS" xml:space="preserve">
+    <value>OBS</value>
+  </data>
+  <data name="Nav_AiAndNetwork" xml:space="preserve">
+    <value>AI &amp; Network</value>
+  </data>
+  <data name="AiSettings_SpeechSection" xml:space="preserve">
+    <value>VOICE INPUT</value>
+  </data>
+  <data name="AiSettings_LlmSection" xml:space="preserve">
+    <value>AI INTELLIGENCE</value>
+  </data>
+  <data name="AiSettings_NetworkSection" xml:space="preserve">
+    <value>NETWORK CLIENT</value>
+  </data>
+  <data name="AiSettings_Microphone" xml:space="preserve">
+    <value>Capture device</value>
+  </data>
+  <data name="AiSettings_RefreshMics" xml:space="preserve">
+    <value>↻ Refresh</value>
+  </data>
+  <data name="AiSettings_Engine" xml:space="preserve">
+    <value>Recognition engine</value>
+  </data>
+  <data name="AiSettings_Language" xml:space="preserve">
+    <value>Recognition language</value>
+  </data>
+  <data name="AiSettings_WhisperModel" xml:space="preserve">
+    <value>Whisper model</value>
+  </data>
+  <data name="AiSettings_ModelBase" xml:space="preserve">
+    <value>Base (faster)</value>
+  </data>
+  <data name="AiSettings_ModelTurbo" xml:space="preserve">
+    <value>Turbo (more accurate)</value>
+  </data>
+  <data name="AiSettings_Sensitivity" xml:space="preserve">
+    <value>VAD Sensitivity</value>
+  </data>
+  <data name="AiSettings_SpeechEnabled" xml:space="preserve">
+    <value>Enable voice input</value>
+  </data>
+  <data name="AiSettings_ActivationNames" xml:space="preserve">
+    <value>Activation names (comma-separated, max 3)</value>
+  </data>
+  <data name="AiSettings_ActivationNamesHint" xml:space="preserve">
+    <value>ℹ Enter up to 3 name forms (e.g. Victoria, Vicky). Voice trigger fires only when a phrase starts with one of these names.</value>
+  </data>
+  <data name="AiSettings_ModelStatus" xml:space="preserve">
+    <value>Model status</value>
+  </data>
+  <data name="AiSettings_OllamaUrl" xml:space="preserve">
+    <value>Ollama API address</value>
+  </data>
+  <data name="AiSettings_OllamaModel" xml:space="preserve">
+    <value>Language model</value>
+  </data>
+  <data name="AiSettings_SaveSettings" xml:space="preserve">
+    <value>Apply Settings</value>
+  </data>
+  <data name="AiSettings_StatusLoaded" xml:space="preserve">
+    <value>MODEL ACTIVE</value>
+  </data>
+  <data name="AiSettings_StatusNotLoaded" xml:space="preserve">
+    <value>MODEL INACTIVE</value>
+  </data>
+  <data name="AiSettings_ResetSession" xml:space="preserve">
+    <value>↺ Reset Session</value>
+  </data>
+  <data name="AiSettings_ProactiveMode" xml:space="preserve">
+    <value>Proactive screen analysis</value>
+  </data>
+  <data name="AiSettings_ProactiveInterval" xml:space="preserve">
+    <value>Analysis interval (sec)</value>
+  </data>
+  <data name="Tray_ResetAiSession" xml:space="preserve">
+    <value>Reset AI Session</value>
+  </data>
+  <data name="AiSettings_OllamaOffline" xml:space="preserve">
+    <value>Ollama not running</value>
+  </data>
+  <data name="AiSettings_RefreshModels" xml:space="preserve">
+    <value>⟳</value>
+  </data>
+  <data name="Toolbox_MouseActionNode_Name" xml:space="preserve">
+    <value>Mouse Control</value>
+  </data>
+  <data name="Toolbox_MouseActionNode_Desc" xml:space="preserve">
+    <value>Emulates mouse clicks, movement and scrolling via Win32 SendInput</value>
+  </data>
+  <data name="Toolbox_RunProcessNode_Name" xml:space="preserve">
+    <value>Launch App</value>
+  </data>
+  <data name="Toolbox_RunProcessNode_Desc" xml:space="preserve">
+    <value>Launches an external application, script or opens a URL in the default browser</value>
+  </data>
+  <data name="Node_MouseActionType" xml:space="preserve">
+    <value>ACTION TYPE</value>
+  </data>
+  <data name="Node_MouseX" xml:space="preserve">
+    <value>X (pixels)</value>
+  </data>
+  <data name="Node_MouseY" xml:space="preserve">
+    <value>Y (pixels)</value>
+  </data>
+  <data name="Node_ScrollAmount" xml:space="preserve">
+    <value>Scroll (sign = direction)</value>
+  </data>
+  <data name="Node_ActiveProcessLabel" xml:space="preserve">
+    <value>Select Running Application</value>
+  </data>
+  <data name="Node_FilePathOrUrl" xml:space="preserve">
+    <value>PATH / URL</value>
+  </data>
+  <data name="Node_Arguments" xml:space="preserve">
+    <value>ARGUMENTS</value>
+  </data>
+  <data name="AiSettings_AiEnabled" xml:space="preserve">
+    <value>Enable AI Assistant</value>
+  </data>
+  <data name="AiSettings_CharacterBtn" xml:space="preserve">
+    <value>Configure AI Personality</value>
+  </data>
+  <data name="AiCharacter_Title" xml:space="preserve">
+    <value>AI Personality</value>
+  </data>
+  <data name="AiCharacter_NameLabel" xml:space="preserve">
+    <value>ASSISTANT NAME</value>
+  </data>
+  <data name="AiCharacter_PromptLabel" xml:space="preserve">
+    <value>SYSTEM PROMPT (PERSONALITY)</value>
+  </data>
+  <data name="AiCharacter_Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="AiCharacter_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Tray_AiEnabled" xml:space="preserve">
+    <value>AI Assistant enabled</value>
+  </data>
+  <data name="Toolbox_ClipboardNode_Name" xml:space="preserve">
+    <value>Clipboard</value>
+  </data>
+  <data name="Toolbox_ClipboardNode_Desc" xml:space="preserve">
+    <value>Reads, writes or copies text via the system clipboard (STA-safe)</value>
+  </data>
+  <data name="Toolbox_TextConditionNode_Name" xml:space="preserve">
+    <value>Text Condition</value>
+  </data>
+  <data name="Toolbox_TextConditionNode_Desc" xml:space="preserve">
+    <value>Compares clipboard text with a given value. True → green branch, False → ruby branch</value>
+  </data>
+  <data name="Node_ClipboardDataType" xml:space="preserve">
+    <value>DATA TYPE</value>
+  </data>
+  <data name="Node_ClipboardAction" xml:space="preserve">
+    <value>ACTION TYPE</value>
+  </data>
+  <data name="Node_ClipboardTextToWrite" xml:space="preserve">
+    <value>TEXT TO WRITE</value>
+  </data>
+  <data name="Node_TextCompareType" xml:space="preserve">
+    <value>COMPARE TYPE</value>
+  </data>
+  <data name="Node_TextMatchValue" xml:space="preserve">
+    <value>VALUE</value>
+  </data>
+  <data name="Node_TextIgnoreCase" xml:space="preserve">
+    <value>Ignore case</value>
+  </data>
+  <data name="AiSettings_TtsSection" xml:space="preserve">
+    <value>SPEECH SYNTHESIS</value>
+  </data>
+  <data name="AiSettings_TtsEnabled" xml:space="preserve">
+    <value>Enable speech synthesis</value>
+  </data>
+  <data name="AiSettings_ShowSubtitles" xml:space="preserve">
+    <value>Show AI subtitles on overlay</value>
+  </data>
+  <data name="AiSettings_TtsMode" xml:space="preserve">
+    <value>Synthesis mode</value>
+  </data>
+  <data name="AiSettings_TtsVoice" xml:space="preserve">
+    <value>Voice</value>
+  </data>
+  <data name="AiSettings_TtsSpeed" xml:space="preserve">
+    <value>Speech speed</value>
+  </data>
+  <data name="AiSettings_TtsVolume" xml:space="preserve">
+    <value>Volume</value>
+  </data>
+  <data name="AiSettings_TtsPreview" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="AiSettings_TtsNoVoices" xml:space="preserve">
+    <value>No voices found</value>
+  </data>
+  <data name="Toolbox_ObsSetSceneNode_Name" xml:space="preserve">
+    <value>OBS: Scene</value>
+  </data>
+  <data name="Toolbox_ObsSetSceneNode_Desc" xml:space="preserve">
+    <value>Switches the active program scene in OBS Studio by name</value>
+  </data>
+  <data name="Toolbox_ObsToggleMuteNode_Name" xml:space="preserve">
+    <value>OBS: Audio</value>
+  </data>
+  <data name="Toolbox_ObsToggleMuteNode_Desc" xml:space="preserve">
+    <value>Mutes or unmutes an OBS audio input by name</value>
+  </data>
+  <data name="Toolbox_ObsRecordControlNode_Name" xml:space="preserve">
+    <value>OBS: Record</value>
+  </data>
+  <data name="Toolbox_ObsRecordControlNode_Desc" xml:space="preserve">
+    <value>Starts, stops or toggles OBS Studio recording</value>
+  </data>
+  <data name="Node_ObsSceneName" xml:space="preserve">
+    <value>Scene name</value>
+  </data>
+  <data name="Node_ObsSceneMode" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="Node_ObsDisconnectedHint" xml:space="preserve">
+    <value>[OBS disconnected — connect in Settings tab]</value>
+  </data>
+  <data name="Node_ObsInputName" xml:space="preserve">
+    <value>Audio input name</value>
+  </data>
+  <data name="Node_ObsMute" xml:space="preserve">
+    <value>Mute</value>
+  </data>
+  <data name="Node_ObsRecordAction" xml:space="preserve">
+    <value>Record action</value>
+  </data>
+  <data name="Nav_Obs" xml:space="preserve">
+    <value>Streaming &amp; OBS</value>
+  </data>
+  <data name="Obs_Title" xml:space="preserve">
+    <value>STREAMING / OBS</value>
+  </data>
+  <data name="Obs_UrlLabel" xml:space="preserve">
+    <value>OBS WebSocket URL</value>
+  </data>
+  <data name="Obs_IpLabel" xml:space="preserve">
+    <value>IP Address / Host</value>
+  </data>
+  <data name="Obs_PortLabel" xml:space="preserve">
+    <value>OBS Port</value>
+  </data>
+  <data name="Obs_PasswordLabel" xml:space="preserve">
+    <value>Connection Password</value>
+  </data>
+  <data name="Obs_StatusConnected" xml:space="preserve">
+    <value>● OBS CONNECTED</value>
+  </data>
+  <data name="Obs_StatusDisconnected" xml:space="preserve">
+    <value>● OBS DISCONNECTED</value>
+  </data>
+  <data name="Obs_ConnectBtn" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Obs_DisconnectBtn" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="Obs_AutoConnect" xml:space="preserve">
+    <value>Auto-connect on startup</value>
+  </data>
+  <data name="Obs_AutoReconnect" xml:space="preserve">
+    <value>Auto-reconnect on disconnect</value>
+  </data>
+  <data name="Obs_ProtocolVersion" xml:space="preserve">
+    <value>Protocol: v5.x (OBS 28+)</value>
+  </data>
+  <data name="Obs_SaveBtn" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Obs_ScenesLabel" xml:space="preserve">
+    <value>OBS Scenes</value>
+  </data>
+  <data name="Obs_RefreshScenesBtn" xml:space="preserve">
+    <value>Refresh Scenes</value>
+  </data>
+
+  <!-- ── 5 new OBS Managers (toolbox) ─────────────────────────────────── -->
+  <data name="Toolbox_ObsSceneManagerNode_Name" xml:space="preserve">
+    <value>OBS: Scenes</value>
+  </data>
+  <data name="Toolbox_ObsSceneManagerNode_Desc" xml:space="preserve">
+    <value>Switches or checks the active program scene in OBS Studio</value>
+  </data>
+  <data name="Toolbox_ObsSourceVisibilityManagerNode_Name" xml:space="preserve">
+    <value>OBS: Sources &amp; Filters</value>
+  </data>
+  <data name="Toolbox_ObsSourceVisibilityManagerNode_Desc" xml:space="preserve">
+    <value>Manages source visibility and filter activity with Scene → Source → Filter cascade</value>
+  </data>
+  <data name="Toolbox_ObsAudioManagerNode_Name" xml:space="preserve">
+    <value>OBS: Audio</value>
+  </data>
+  <data name="Toolbox_ObsAudioManagerNode_Desc" xml:space="preserve">
+    <value>Controls muting and volume of OBS audio inputs (Mute / Unmute / Toggle / SetVolume)</value>
+  </data>
+  <data name="Toolbox_ObsStreamAndRecordManagerNode_Name" xml:space="preserve">
+    <value>OBS: Stream &amp; Record</value>
+  </data>
+  <data name="Toolbox_ObsStreamAndRecordManagerNode_Desc" xml:space="preserve">
+    <value>Manages and checks streaming, recording and replay buffer status in OBS Studio</value>
+  </data>
+  <data name="Toolbox_ObsDynamicContentManagerNode_Name" xml:space="preserve">
+    <value>OBS: Dynamic Content</value>
+  </data>
+  <data name="Toolbox_ObsDynamicContentManagerNode_Desc" xml:space="preserve">
+    <value>Changes texts, images and controls media players in OBS in real time</value>
+  </data>
+
+  <!-- ── Node property labels (cascade) ───────────────────────────────── -->
+  <data name="Node_ObsSourceScene" xml:space="preserve">
+    <value>Scene</value>
+  </data>
+  <data name="Node_ObsSource" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Node_ObsFilter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Node_ObsTargetType" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="Node_ObsVisibilityAction" xml:space="preserve">
+    <value>Visibility action</value>
+  </data>
+  <data name="Node_ObsAudioAction" xml:space="preserve">
+    <value>Audio action</value>
+  </data>
+  <data name="Node_ObsTargetVolumeDb" xml:space="preserve">
+    <value>Volume (dB)</value>
+  </data>
+  <data name="Node_ObsStreamTarget" xml:space="preserve">
+    <value>Stream target</value>
+  </data>
+  <data name="Node_ObsStreamAction" xml:space="preserve">
+    <value>Stream action</value>
+  </data>
+  <data name="Node_ObsContentType" xml:space="preserve">
+    <value>Content type</value>
+  </data>
+  <data name="Node_ObsTextContent" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Node_ObsFilePath" xml:space="preserve">
+    <value>File path</value>
+  </data>
+  <data name="Node_ObsMediaAction" xml:space="preserve">
+    <value>Media action</value>
+  </data>
+  <data name="Node_ObsAudioInput" xml:space="preserve">
+    <value>Audio input</value>
+  </data>
+
+  <!-- ── ClipboardActionType enum localization ────────────────────────── -->
+  <data name="Enum_ClipboardActionType_CopyActiveText" xml:space="preserve">
+    <value>Copy Active Text</value>
+  </data>
+  <data name="Enum_ClipboardActionType_WriteText" xml:space="preserve">
+    <value>Write Text</value>
+  </data>
+  <data name="Enum_ClipboardActionType_ReadText" xml:space="preserve">
+    <value>Read Text</value>
+  </data>
+
+  <!-- ── ClipboardDataType enum localization ──────────────────────────── -->
+  <data name="Enum_ClipboardDataType_Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Enum_ClipboardDataType_Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+
+  <!-- ── ClipboardImageAction enum localization ───────────────────────── -->
+  <data name="Enum_ClipboardImageAction_WriteImage" xml:space="preserve">
+    <value>Write Image</value>
+  </data>
+  <data name="Enum_ClipboardImageAction_ReadImage" xml:space="preserve">
+    <value>Read Image</value>
+  </data>
+  <data name="Enum_ClipboardImageAction_Clear" xml:space="preserve">
+    <value>Clear Clipboard</value>
+  </data>
+
+  <!-- ── MouseActionType enum localization ────────────────────────────── -->
+  <data name="Enum_MouseActionType_LeftClick" xml:space="preserve">
+    <value>Left Click</value>
+  </data>
+  <data name="Enum_MouseActionType_RightClick" xml:space="preserve">
+    <value>Right Click</value>
+  </data>
+  <data name="Enum_MouseActionType_DoubleLeftClick" xml:space="preserve">
+    <value>Double Left Click</value>
+  </data>
+  <data name="Enum_MouseActionType_Move" xml:space="preserve">
+    <value>Move Cursor</value>
+  </data>
+  <data name="Enum_MouseActionType_Scroll" xml:space="preserve">
+    <value>Scroll Wheel</value>
+  </data>
+  <data name="Enum_MouseActionType_LeftButtonDown" xml:space="preserve">
+    <value>Left Button Down</value>
+  </data>
+  <data name="Enum_MouseActionType_LeftButtonUp" xml:space="preserve">
+    <value>Left Button Up</value>
+  </data>
+
+  <!-- ── TextCompareType enum localization ────────────────────────────── -->
+  <data name="Enum_TextCompareType_Contains" xml:space="preserve">
+    <value>Contains</value>
+  </data>
+  <data name="Enum_TextCompareType_Equals" xml:space="preserve">
+    <value>Equals</value>
+  </data>
+  <data name="Enum_TextCompareType_StartsWith" xml:space="preserve">
+    <value>Starts With</value>
+  </data>
+  <data name="Enum_TextCompareType_IsEmpty" xml:space="preserve">
+    <value>Is Empty</value>
+  </data>
+  <data name="Enum_TextCompareType_ContainsWholeWord" xml:space="preserve">
+    <value>Contains Whole Word</value>
+  </data>
+  <data name="Enum_TextCompareType_GreaterThanOrEqual" xml:space="preserve">
+    <value>Greater or Equal</value>
+  </data>
+  <data name="Enum_TextCompareType_LessThanOrEqual" xml:space="preserve">
+    <value>Less or Equal</value>
+  </data>
+  <data name="Enum_TextCompareType_Between" xml:space="preserve">
+    <value>Between (Min and Max)</value>
+  </data>
+  <data name="Node_TextCondition_Min" xml:space="preserve">
+    <value>MIN:</value>
+  </data>
+  <data name="Node_TextCondition_Max" xml:space="preserve">
+    <value>MAX:</value>
+  </data>
+
+  <!-- ── WinProcessAction enum localization ───────────────────────────── -->
+  <data name="Enum_WinProcessAction_Kill" xml:space="preserve">
+    <value>Kill Process</value>
+  </data>
+  <data name="Enum_WinProcessAction_CheckRunning" xml:space="preserve">
+    <value>Check Running</value>
+  </data>
+  <data name="Enum_WinProcessAction_Restart" xml:space="preserve">
+    <value>Restart Process</value>
+  </data>
+
+  <!-- ── WinWindowAction enum localization ────────────────────────────── -->
+  <data name="Enum_WinWindowAction_Minimize" xml:space="preserve">
+    <value>Minimize</value>
+  </data>
+  <data name="Enum_WinWindowAction_Maximize" xml:space="preserve">
+    <value>Maximize</value>
+  </data>
+  <data name="Enum_WinWindowAction_Restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="Enum_WinWindowAction_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Enum_WinWindowAction_MoveAndResize" xml:space="preserve">
+    <value>Move &amp; Resize</value>
+  </data>
+  <data name="Enum_WinWindowAction_CheckActive" xml:space="preserve">
+    <value>Check Active</value>
+  </data>
+  <data name="Enum_WinWindowAction_MinimizeAll" xml:space="preserve">
+    <value>Minimize All Windows</value>
+  </data>
+  <data name="Enum_WinWindowAction_RestoreAll" xml:space="preserve">
+    <value>Restore All Windows</value>
+  </data>
+  <data name="Enum_WinWindowAction_TileVertical" xml:space="preserve">
+    <value>Tile Vertically</value>
+  </data>
+  <data name="Enum_WinWindowAction_TileHorizontal" xml:space="preserve">
+    <value>Tile Horizontally</value>
+  </data>
+  <data name="Enum_WinWindowAction_Cascade" xml:space="preserve">
+    <value>Cascade Windows</value>
+  </data>
+  <data name="Enum_WinWindowAction_Focus" xml:space="preserve">
+    <value>Activate (Focus)</value>
+  </data>
+
+  <!-- ── OBS node enum localization ───────────────────────────────────── -->
+  <data name="Enum_ObsSceneMode_Switch" xml:space="preserve">
+    <value>Switch</value>
+  </data>
+  <data name="Enum_ObsSceneMode_CheckActive" xml:space="preserve">
+    <value>Check Active</value>
+  </data>
+  <data name="Enum_ObsVisibilityTarget_Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Enum_ObsVisibilityTarget_Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Enum_ObsVisibilityAction_Show" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="Enum_ObsVisibilityAction_Hide" xml:space="preserve">
+    <value>Hide</value>
+  </data>
+  <data name="Enum_ObsVisibilityAction_Toggle" xml:space="preserve">
+    <value>Toggle</value>
+  </data>
+  <data name="Enum_ObsAudioAction_Mute" xml:space="preserve">
+    <value>Mute</value>
+  </data>
+  <data name="Enum_ObsAudioAction_Unmute" xml:space="preserve">
+    <value>Unmute</value>
+  </data>
+  <data name="Enum_ObsAudioAction_ToggleMute" xml:space="preserve">
+    <value>Toggle Mute</value>
+  </data>
+  <data name="Enum_ObsAudioAction_SetVolume" xml:space="preserve">
+    <value>Set Volume</value>
+  </data>
+  <data name="Enum_ObsStreamTarget_Recording" xml:space="preserve">
+    <value>Recording</value>
+  </data>
+  <data name="Enum_ObsStreamTarget_Streaming" xml:space="preserve">
+    <value>Streaming</value>
+  </data>
+  <data name="Enum_ObsStreamTarget_ReplayBuffer" xml:space="preserve">
+    <value>Replay Buffer</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Toggle" xml:space="preserve">
+    <value>Toggle</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Enum_ObsContentType_Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Enum_ObsContentType_Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="Enum_ObsContentType_Media" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="Enum_ObsMediaAction_Play" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Enum_ObsMediaAction_Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Enum_ObsMediaAction_Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Enum_ObsMediaAction_Restart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="Enum_ObsVisibilityAction_Enable" xml:space="preserve">
+    <value>Enable</value>
+  </data>
+  <data name="Enum_ObsVisibilityAction_Disable" xml:space="preserve">
+    <value>Disable</value>
+  </data>
+  <data name="Enum_ObsAudioAction_CheckMute" xml:space="preserve">
+    <value>Check Mute</value>
+  </data>
+  <data name="Enum_ObsAudioAction_CheckVolume" xml:space="preserve">
+    <value>Check Volume</value>
+  </data>
+  <data name="Enum_ObsStreamTarget_Stream" xml:space="preserve">
+    <value>Stream</value>
+  </data>
+  <data name="Enum_ObsStreamTarget_Record" xml:space="preserve">
+    <value>Record</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Pause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <data name="Enum_ObsStreamAction_Check" xml:space="preserve">
+    <value>Check Status</value>
+  </data>
+
+  <!-- ── Windows node categories ───────────────────────────────────────── -->
+  <data name="Toolbox_Category_WindowsSystem" xml:space="preserve">
+    <value>SYSTEM</value>
+  </data>
+  <data name="Toolbox_Category_ScriptsAndData" xml:space="preserve">
+    <value>SCRIPTS &amp; DATA</value>
+  </data>
+  <data name="Toolbox_Category_SmartLogic" xml:space="preserve">
+    <value>SMART LOGIC</value>
+  </data>
+
+  <!-- ── Windows nodes (toolbox) ───────────────────────────────────────── -->
+  <data name="Toolbox_WinProcessManagerNode_Name" xml:space="preserve">
+    <value>Process Manager</value>
+  </data>
+  <data name="Toolbox_WinProcessManagerNode_Desc" xml:space="preserve">
+    <value>Start, stop and check Windows system processes</value>
+  </data>
+  <data name="Toolbox_WinWindowManagerNode_Name" xml:space="preserve">
+    <value>Window Manager</value>
+  </data>
+  <data name="Toolbox_WinWindowManagerNode_Desc" xml:space="preserve">
+    <value>Activate, move and minimize Windows windows</value>
+  </data>
+  <data name="Toolbox_WinSystemPowerNode_Name" xml:space="preserve">
+    <value>Power &amp; Monitors</value>
+  </data>
+  <data name="Toolbox_WinSystemPowerNode_Desc" xml:space="preserve">
+    <value>Control system power state and monitor outputs</value>
+  </data>
+  <data name="Toolbox_WinPowerShellNode_Name" xml:space="preserve">
+    <value>PowerShell / CMD</value>
+  </data>
+  <data name="Toolbox_WinPowerShellNode_Desc" xml:space="preserve">
+    <value>Execute PowerShell and CMD scripts in hidden mode</value>
+  </data>
+  <data name="Toolbox_WinAudioDeviceNode_Name" xml:space="preserve">
+    <value>Audio Device</value>
+  </data>
+  <data name="Toolbox_WinAudioDeviceNode_Desc" xml:space="preserve">
+    <value>Switch Windows audio output devices</value>
+  </data>
+  <data name="Toolbox_WaitSmartDelayNode_Name" xml:space="preserve">
+    <value>Smart Delay</value>
+  </data>
+  <data name="Toolbox_WaitSmartDelayNode_Desc" xml:space="preserve">
+    <value>Intelligent wait for pixel or window appearance</value>
+  </data>
+  <data name="Toolbox_WaitRandomDelayNode_Name" xml:space="preserve">
+    <value>Random Delay</value>
+  </data>
+  <data name="Toolbox_WaitRandomDelayNode_Desc" xml:space="preserve">
+    <value>Delay with random spread (human-like behaviour)</value>
+  </data>
+  <data name="Toolbox_LogicCounterNode_Name" xml:space="preserve">
+    <value>Counter</value>
+  </data>
+  <data name="Toolbox_LogicCounterNode_Desc" xml:space="preserve">
+    <value>Iteration counter with branching at limit</value>
+  </data>
+  <data name="Toolbox_WinSpeakTextNode_Name" xml:space="preserve">
+    <value>Speak Text</value>
+  </data>
+  <data name="Toolbox_WinSpeakTextNode_Desc" xml:space="preserve">
+    <value>Synthesizes the given text using a local Piper or Kokoro voice</value>
+  </data>
+  <data name="Node_SpeakText" xml:space="preserve">
+    <value>Text to speak:</value>
+  </data>
+  <data name="Node_SpeakVoice" xml:space="preserve">
+    <value>Voice (Piper / Kokoro):</value>
+  </data>
+  <data name="Node_SpeakTtsDisabledHint" xml:space="preserve">
+    <value>Warning: Global TTS is disabled in settings. The node will automatically follow the ruby error branch (On Error).</value>
+  </data>
+
+  <!-- ── WinPowerAction enum localization ─────────────────────────────── -->
+  <data name="Enum_WinPowerAction_Sleep" xml:space="preserve">
+    <value>Sleep</value>
+  </data>
+  <data name="Enum_WinPowerAction_Shutdown" xml:space="preserve">
+    <value>Shut Down</value>
+  </data>
+  <data name="Enum_WinPowerAction_Restart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="Enum_WinPowerAction_Lock" xml:space="preserve">
+    <value>Lock Screen</value>
+  </data>
+  <data name="Enum_WinPowerAction_MonitorOff" xml:space="preserve">
+    <value>Turn Off Monitor</value>
+  </data>
+
+  <!-- ── Power / PowerShell node labels ───────────────────────────────── -->
+  <data name="Node_Power_Action" xml:space="preserve">
+    <value>ACTION:</value>
+  </data>
+  <data name="Node_PowerShell_Script" xml:space="preserve">
+    <value>SCRIPT:</value>
+  </data>
+  <data name="Node_PowerShell_UsePwsh" xml:space="preserve">
+    <value>PowerShell (else — CMD)</value>
+  </data>
+
+  <!-- ── SmartWaitType enum localization ──────────────────────────────── -->
+  <data name="Enum_SmartWaitType_UntilWindowActive" xml:space="preserve">
+    <value>Wait for Window</value>
+  </data>
+  <data name="Enum_SmartWaitType_UntilPixelColor" xml:space="preserve">
+    <value>Wait for Pixel Color</value>
+  </data>
+
+  <!-- ── SmartDelay / AudioDevice node labels ─────────────────────────── -->
+  <data name="Node_SmartWait_WaitType" xml:space="preserve">
+    <value>WAIT TYPE:</value>
+  </data>
+  <data name="Node_SmartWait_Window" xml:space="preserve">
+    <value>PROCESS NAME:</value>
+  </data>
+  <data name="Node_SmartWait_Timeout" xml:space="preserve">
+    <value>TIMEOUT (sec):</value>
+  </data>
+  <data name="Node_SmartWait_PixelX" xml:space="preserve">
+    <value>X:</value>
+  </data>
+  <data name="Node_SmartWait_PixelY" xml:space="preserve">
+    <value>Y:</value>
+  </data>
+  <data name="Node_SmartWait_Color" xml:space="preserve">
+    <value>COLOR (HEX):</value>
+  </data>
+  <data name="Node_AudioDevice_Name" xml:space="preserve">
+    <value>DEVICE:</value>
+  </data>
+  <data name="Node_AudioDevice_IsPlayback" xml:space="preserve">
+    <value>Playback (else — microphone)</value>
+  </data>
+
+  <data name="Nav_Queue" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+
+  <!-- ── Twitch Chat IRC ───────────────────────────────────────────────── -->
+  <data name="Nav_Twitch" xml:space="preserve">
+    <value>Twitch Chat</value>
+  </data>
+  <data name="Twitch_Title" xml:space="preserve">
+    <value>TWITCH CHAT / IRC</value>
+  </data>
+  <data name="Twitch_ChannelLabel" xml:space="preserve">
+    <value>CHANNEL NAME:</value>
+  </data>
+  <data name="Twitch_UsernameLabel" xml:space="preserve">
+    <value>BOT / ACCOUNT NAME:</value>
+  </data>
+  <data name="Twitch_OAuthLabel" xml:space="preserve">
+    <value>OAUTH TOKEN:</value>
+  </data>
+  <data name="Twitch_OAuthHint" xml:space="preserve">
+    <value>Get token at: twitchapps.com/tmi/</value>
+  </data>
+  <data name="Twitch_StatusConnected" xml:space="preserve">
+    <value>● CONNECTED TO TWITCH</value>
+  </data>
+  <data name="Twitch_StatusDisconnected" xml:space="preserve">
+    <value>● DISCONNECTED</value>
+  </data>
+  <data name="Twitch_ConnectBtn" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Twitch_DisconnectBtn" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="Twitch_SaveBtn" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Twitch_TtsPermissionHint" xml:space="preserve">
+    <value>!tts command is available to: moderators, VIPs and channel subscribers.</value>
+  </data>
+
+  <!-- ── Logic_BranchNode — Enum and UI ───────────────────────────────── -->
+  <data name="Enum_LogicDataType_Text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="Enum_LogicDataType_Number" xml:space="preserve">
+    <value>Number</value>
+  </data>
+  <data name="Enum_LogicDataType_Boolean" xml:space="preserve">
+    <value>Boolean</value>
+  </data>
+  <data name="Enum_LogicCompareType_Equals" xml:space="preserve">
+    <value>Equals</value>
+  </data>
+  <data name="Enum_LogicCompareType_NotEquals" xml:space="preserve">
+    <value>Not Equals</value>
+  </data>
+  <data name="Enum_LogicCompareType_GreaterThan" xml:space="preserve">
+    <value>Greater Than</value>
+  </data>
+  <data name="Enum_LogicCompareType_LessThan" xml:space="preserve">
+    <value>Less Than</value>
+  </data>
+  <data name="Enum_LogicCompareType_Contains" xml:space="preserve">
+    <value>Contains</value>
+  </data>
+  <data name="Node_Branch_DataType" xml:space="preserve">
+    <value>DATA TYPE:</value>
+  </data>
+  <data name="Node_Branch_CompareType" xml:space="preserve">
+    <value>COMPARE:</value>
+  </data>
+  <data name="Node_Branch_TargetValue" xml:space="preserve">
+    <value>TARGET VALUE:</value>
+  </data>
+  <data name="Node_Branch_IgnoreCase" xml:space="preserve">
+    <value>Ignore case</value>
+  </data>
+  <data name="Toolbox_LogicBranchNode_Name" xml:space="preserve">
+    <value>Branch Condition</value>
+  </data>
+  <data name="Toolbox_LogicBranchNode_Desc" xml:space="preserve">
+    <value>Compares received data with a target value and branches execution</value>
+  </data>
+  <data name="Toolbox_VisionOcrNode_Name" xml:space="preserve">
+    <value>OCR: Text Recognition</value>
+  </data>
+  <data name="Toolbox_VisionOcrNode_Desc" xml:space="preserve">
+    <value>Reads text from an image using built-in Windows OCR. Output — recognized string</value>
+  </data>
+  <data name="Toolbox_WinTranslateNode_Name" xml:space="preserve">
+    <value>Text Translation</value>
+  </data>
+  <data name="Toolbox_WinTranslateNode_Desc" xml:space="preserve">
+    <value>Instantly translates text to any language via free Google API</value>
+  </data>
+  <data name="Node_OcrImagePath" xml:space="preserve">
+    <value>IMAGE PATH</value>
+  </data>
+  <data name="Node_OcrLanguage" xml:space="preserve">
+    <value>OCR LANGUAGE</value>
+  </data>
+  <data name="Node_WinTranslateSourceText" xml:space="preserve">
+    <value>SOURCE TEXT</value>
+  </data>
+  <data name="Node_WinTranslateTargetCode" xml:space="preserve">
+    <value>TARGET LANGUAGE</value>
+  </data>
+  <data name="Node_WinTranslateResult" xml:space="preserve">
+    <value>TRANSLATION RESULT</value>
+  </data>
+  <data name="Toolbox_LogicSequenceNode_Name" xml:space="preserve">
+    <value>Action Queue</value>
+  </data>
+  <data name="Toolbox_LogicSequenceNode_Desc" xml:space="preserve">
+    <value>Sequentially executes multiple action branches. A new step is added automatically when connected</value>
+  </data>
+  <data name="Node_Sequence_StepsLabel" xml:space="preserve">
+    <value>QUEUE STEPS</value>
+  </data>
+  <data name="Toolbox_LogicQueueBlockNode_Name" xml:space="preserve">
+    <value>Queue Block</value>
+  </data>
+  <data name="Toolbox_LogicQueueBlockNode_Desc" xml:space="preserve">
+    <value>Sequential execution gate: waits for the previous branch to finish or for a node count threshold</value>
+  </data>
+  <data name="Node_QueueBlock_WaitFullChain" xml:space="preserve">
+    <value>Wait for full chain completion</value>
+  </data>
+  <data name="Node_QueueBlock_WaitNodesCount" xml:space="preserve">
+    <value>TRIGGER AFTER N NODES</value>
+  </data>
+  <data name="Toolbox_BypassQueueNode_Name" xml:space="preserve">
+    <value>Bypass Queue</value>
+  </data>
+  <data name="Toolbox_BypassQueueNode_Desc" xml:space="preserve">
+    <value>Priority launch: skips region queues. System Level — instant start bypassing everything. Exclusive — monopoly mode, freezes all other macros during execution.</value>
+  </data>
+</root>

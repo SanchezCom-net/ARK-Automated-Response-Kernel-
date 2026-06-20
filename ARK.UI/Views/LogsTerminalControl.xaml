@@ -1,0 +1,152 @@
+<UserControl x:Class="ARK.UI.Views.LogsTerminalControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:res="clr-namespace:ARK.UI.Resources"
+             xmlns:svc="clr-namespace:ARK.UI.Core.Services"
+             Background="Transparent"
+             SnapsToDevicePixels="True">
+
+    <UserControl.Resources>
+        <svc:LogHighlightConverter x:Key="LogHighlightConverter"/>
+    </UserControl.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="{x:Static res:Strings.Logs_Title}"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Foreground="{StaticResource GoldBrush}"
+                   Margin="0,0,0,12"/>
+
+        <!-- Панель нечеткого поиска (Obsidian Gold: тёмный фон + золотая рамка) -->
+        <Border Grid.Row="1"
+                Background="#FF101010"
+                BorderBrush="{StaticResource GoldBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="8,6"
+                Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Иконка поиска -->
+                <TextBlock Grid.Column="0"
+                           Text="🔍"
+                           FontSize="13"
+                           Foreground="#FF808080"
+                           VerticalAlignment="Center"
+                           Margin="2,0,8,0"/>
+
+                <!-- Поле запроса: Delay=150 — плавный ввод без лагов перерисовки.
+                     Подсказка идёт через Tag — её рендерит глобальный стиль Inputs.xaml -->
+                <TextBox Grid.Column="1"
+                         Text="{Binding LogSearchQuery, UpdateSourceTrigger=PropertyChanged, Delay=150}"
+                         Tag="{x:Static res:Strings.Logs_SearchPlaceholder}"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         VerticalContentAlignment="Center"/>
+
+                <Button Grid.Column="2"
+                        Margin="8,0,0,0"
+                        Padding="10,4"
+                        Command="{Binding RefreshLogsCommand}">
+                    <TextBlock Text="{x:Static res:Strings.Logs_Refresh}"/>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Единый SharedLogsScrollViewer: оба слоя прокручиваются одним контейнером.
+             Нет двух независимых ScrollViewer → нет кумулятивного дрейфа строк.
+             Border управляет рамкой: серая → золото при наведении/фокусе. -->
+        <Border Grid.Row="2"
+                Background="#FF0A0A0A"
+                BorderThickness="1"
+                CornerRadius="2">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="#FF2A2A2A"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource GoldBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource GoldBrush}"/>
+                            <Setter Property="Effect" Value="{StaticResource GoldGlowEffect}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <!-- ScrollToEndTrigger: при изменении LogOutputText прокрутить в конец
+                 после завершения layout-прохода (Background DispatcherPriority). -->
+            <ScrollViewer x:Name="SharedLogsScrollViewer"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Auto"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Margin="0"
+                          Padding="4,4,4,4"
+                          svc:ScrollSyncBehavior.ScrollToEndTrigger="{Binding LogOutputText}">
+                <!-- HyperlinkClickBehavior: PreviewMouseLeftButtonDown (tunneling) перехватывается
+                     на Grid до TextBox; временный InputHitTest на TextBlock находит Hyperlink. -->
+                <Grid svc:HyperlinkClickBehavior.Enabled="True">
+                    <!-- Слой 1: TextBox — выделение мышью + Ctrl+C; скроллбары Disabled,
+                         прокрутка делегирована SharedLogsScrollViewer.
+                         VerticalAlignment="Top" + VerticalContentAlignment="Top": оба слоя
+                         прибиты к одной Y-координате; исключает дрейф при малом числе строк. -->
+                    <TextBox x:Name="BackgroundSelectableBox"
+                             Text="{Binding LogOutputText, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FocusVisualStyle="{x:Null}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="Transparent"
+                             CaretBrush="#FFF5D77F"
+                             SelectionBrush="#FFF5D77F"
+                             SelectionOpacity="0.3"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             TextWrapping="NoWrap"
+                             AcceptsReturn="True"
+                             VerticalAlignment="Top"
+                             VerticalContentAlignment="Top"
+                             VerticalScrollBarVisibility="Disabled"
+                             HorizontalScrollBarVisibility="Disabled"
+                             Margin="0"
+                             Padding="0"
+                             svc:UrlCursorBehavior.Enabled="True"/>
+                    <!-- Слой 2: TextBlock — золотая подсветка + URL Hyperlink;
+                         IsHitTestVisible=False → клики/выделение проходят к TextBox.
+                         VerticalAlignment="Top": зеркалит TextBox — одна Y-координата старта.
+                         SyncSourceText = эталон Self-Healing: кол-во \n должно == LineBreak в Inlines. -->
+                    <TextBlock FontFamily="Consolas"
+                               FontSize="12"
+                               TextWrapping="NoWrap"
+                               IsHitTestVisible="False"
+                               VerticalAlignment="Top"
+                               Margin="0"
+                               Padding="0"
+                               svc:LogInlinesBehavior.SyncSourceText="{Binding LogOutputText}">
+                        <svc:LogInlinesBehavior.Source>
+                            <MultiBinding Converter="{StaticResource LogHighlightConverter}">
+                                <Binding Path="LogOutputText"/>
+                                <Binding Path="DataContext.LogSearchQuery"
+                                         RelativeSource="{RelativeSource AncestorType=UserControl}"/>
+                            </MultiBinding>
+                        </svc:LogInlinesBehavior.Source>
+                    </TextBlock>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+
+</UserControl>

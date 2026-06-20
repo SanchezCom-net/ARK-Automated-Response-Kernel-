@@ -1,0 +1,66 @@
+<Application x:Class="ARK.UI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Brushes.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Inputs.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Buttons.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Themes/Scrollbars.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- WPF ContextMenu системного трея в стиле Obsidian Gold (4 группы) -->
+            <ContextMenu x:Key="TrayContextMenu"
+                         Style="{StaticResource ObsidianContextMenuStyle}">
+
+                <!-- ── ГРУППА 1: Статус системы ── -->
+                <MenuItem Tag="status"
+                          Style="{StaticResource ObsidianMenuItemStyle}"
+                          IsEnabled="False"/>
+                <MenuItem Tag="network"
+                          Style="{StaticResource ObsidianMenuItemStyle}"
+                          IsEnabled="False"/>
+
+                <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
+
+                <!-- ── ГРУППА 2: Быстрое управление ── -->
+                <MenuItem Tag="dashboard"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="run_pause"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="overlay"
+                          Style="{StaticResource ObsidianMenuItemStyle}"
+                          IsCheckable="True"/>
+
+                <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
+
+                <!-- ── ГРУППА 3: Конфигурация и обслуживание ── -->
+                <MenuItem Tag="reset_overlay"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="reset_ai_session"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="ai_enabled"
+                          Style="{StaticResource ObsidianMenuItemStyle}"
+                          IsCheckable="True"/>
+                <MenuItem Tag="autostart"
+                          Style="{StaticResource ObsidianMenuItemStyle}"
+                          IsCheckable="True"/>
+                <MenuItem Tag="language"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="clear_logs"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+
+                <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
+
+                <!-- ── ГРУППА 4: Блок закрытия ── -->
+                <MenuItem Tag="restart"
+                          Style="{StaticResource ObsidianMenuItemStyle}"/>
+                <MenuItem Tag="exit"
+                          Style="{StaticResource ExitMenuItemStyle}"/>
+
+            </ContextMenu>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
