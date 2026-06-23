@@ -1,7 +1,0 @@
-<Solution>
-  <Folder Name="/Элементы решения/">
-    <File Path="CLAUDE.md" />
-    <File Path="PROJECT_ANALYSIS.md" />
-  </Folder>
-  <Project Path="ARK.UI/ARK.UI.csproj" />
-</Solution>
