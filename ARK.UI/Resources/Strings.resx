@@ -923,6 +923,20 @@
     <value>Активировать (Фокус)</value>
   </data>
 
+  <!-- ── Локализация Enum-значений SelfCollisionStrategy ──────────────── -->
+  <data name="Enum_SelfCollisionStrategy_Parallel" xml:space="preserve">
+    <value>Параллельно</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Drop" xml:space="preserve">
+    <value>Игнорировать</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Queue" xml:space="preserve">
+    <value>В очередь</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Restart" xml:space="preserve">
+    <value>Перезапустить</value>
+  </data>
+
   <!-- ── Локализация Enum-значений OBS-нод ─────────────────────────────── -->
   <data name="Enum_ObsSceneMode_Switch" xml:space="preserve">
     <value>Переключение</value>
@@ -1303,5 +1317,62 @@
   </data>
   <data name="Toolbox_BypassQueueNode_Desc" xml:space="preserve">
     <value>Приоритетный запуск: обходит очереди регионов. System Level — мгновенный старт в обход всего. Exclusive — монопольный режим, замораживает другие макросы.</value>
+  </data>
+
+  <!-- ── MacroExplorer V3 — контекстные меню ──────────────────────────── -->
+  <data name="Explorer_CtxEdit" xml:space="preserve">
+    <value>Редактировать</value>
+  </data>
+  <data name="Explorer_CtxDuplicate" xml:space="preserve">
+    <value>Дублировать</value>
+  </data>
+  <data name="Explorer_CtxSendToRelease" xml:space="preserve">
+    <value>Отправить в Release</value>
+  </data>
+  <data name="Explorer_CtxReturnToBeta" xml:space="preserve">
+    <value>Вернуть в Beta</value>
+  </data>
+  <data name="Explorer_CtxCreateSubFolder" xml:space="preserve">
+    <value>Создать подпапку</value>
+  </data>
+  <data name="Explorer_CtxCreateMacroHere" xml:space="preserve">
+    <value>Создать макрос здесь</value>
+  </data>
+
+  <!-- ── Blueprint Editor V3 — Guardian / Architecture nodes ───────── -->
+  <data name="Toolbox_Category_GuardianLogic" xml:space="preserve">
+    <value>Архитектура V3</value>
+  </data>
+  <data name="Toolbox_MacroPolicyNode_Name" xml:space="preserve">
+    <value>Политика макроса</value>
+  </data>
+  <data name="Toolbox_MacroPolicyNode_Desc" xml:space="preserve">
+    <value>Пассивная нода-конфигуратор: задаёт приоритет, монополию, иммунитет и стратегию конфликтов для всего графа</value>
+  </data>
+  <data name="Toolbox_SynchronizerNode_Name" xml:space="preserve">
+    <value>Синхронизатор</value>
+  </data>
+  <data name="Toolbox_SynchronizerNode_Desc" xml:space="preserve">
+    <value>Ожидает накопления N сигналов или истечения таймера, затем передаёт управление дальше</value>
+  </data>
+  <data name="Toolbox_MacroResetNode_Name" xml:space="preserve">
+    <value>Сброс состояния</value>
+  </data>
+  <data name="Toolbox_MacroResetNode_Desc" xml:space="preserve">
+    <value>Широковещательный сброс: возвращает все ноды графа к дефолтным значениям рабочего профиля</value>
+  </data>
+
+  <!-- ── Blueprint V3 — новые имена портов ─────────────────────────── -->
+  <data name="Blueprint_PortTriggerIn" xml:space="preserve">
+    <value>Trigger In (сигнал запуска)</value>
+  </data>
+  <data name="Blueprint_PortDataIn" xml:space="preserve">
+    <value>Data In (ID пакета с шины)</value>
+  </data>
+  <data name="Blueprint_PortCustomData" xml:space="preserve">
+    <value>Custom Data Out (метаданные)</value>
+  </data>
+  <data name="Blueprint_PortBlackBox" xml:space="preserve">
+    <value>Black Box Log (диагностика)</value>
   </data>
 </root>

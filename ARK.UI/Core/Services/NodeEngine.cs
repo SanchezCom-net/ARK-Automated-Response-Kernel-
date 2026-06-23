@@ -1,8 +1,9 @@
 using System.Collections.Frozen;
-using System.Reflection;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
-using ARK.UI.Core.Models;
+using ARK.UI.Core.Models; // MacroExecutionContext, VisualConnection
 using ARK.UI.Core.Nodes;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ARK.UI.Core.Services;
 
@@ -61,7 +62,9 @@ public sealed class NodeEngine : INodeEngine
             foreach (var node in _nodes.Values)
                 node.ResetToPending();
 
-            await ExecuteBranchAsync(startNodeId, context, _cts.Token).ConfigureAwait(false);
+            await RegisterTriggersAsync(startNodeId, _cts.Token).ConfigureAwait(false);
+
+            await ExecuteBranchAsync(startNodeId, null, context, _cts.Token).ConfigureAwait(false);
 
             await _logger.LogInfoAsync(nameof(NodeEngine), "Граф выполнен до конца.");
         }
@@ -77,9 +80,65 @@ public sealed class NodeEngine : INodeEngine
         }
     }
 
+    /// <summary>
+    /// V3 изолированный запуск. Стартует строго с triggerNodeId (SpeechTriggerNode / HotkeyTriggerNode).
+    /// TriggerRootNode остаётся в Pending — не выполняется, не подсвечивается.
+    /// RegisterTriggersAsync не вызывается: событие уже обнаружено EventMonitor.
+    /// </summary>
+    public async Task StartAsync(Guid triggerNodeId, DataBusPacket? initPacket, CancellationToken ct = default)
+    {
+        if (_isRunning)
+        {
+            await _logger.LogWarningAsync(nameof(NodeEngine),
+                $"[V3] Движок уже запущен, запуск от триггера {triggerNodeId} отклонён.");
+            return;
+        }
+
+        _cts       = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _isRunning = true;
+
+        try
+        {
+            await _logger.LogInfoAsync(nameof(NodeEngine),
+                $"[V3] Изолированный запуск от ноды-триггера: {triggerNodeId}. " +
+                $"TriggerRootNode остаётся в Pending.").ConfigureAwait(false);
+
+            // Сбрасываем все ноды кроме TriggerRootNode — она остаётся Pending
+            foreach (var node in _nodes.Values)
+            {
+                if (node is not TriggerRootNode)
+                    node.ResetToPending();
+            }
+
+            // Строим контекст исполнения из данных initPacket
+            var context = new MacroExecutionContext();
+            context.Variables["IsInteractiveTest"] = true;
+            if (initPacket?.Metadata.TryGetValue("SpeechRecognizedText", out var speech) == true
+                && !string.IsNullOrEmpty(speech))
+                context.Variables["SpeechRecognizedText"] = speech;
+
+            // Запускаем строго с триггерной ноды — без RegisterTriggersAsync
+            await ExecuteBranchAsync(triggerNodeId, initPacket, context, _cts.Token).ConfigureAwait(false);
+
+            await _logger.LogInfoAsync(nameof(NodeEngine),
+                "[V3] Граф выполнен до конца.").ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await _logger.LogWarningAsync(nameof(NodeEngine),
+                "[V3] Выполнение графа отменено.").ConfigureAwait(false);
+        }
+        finally
+        {
+            _isRunning = false;
+            _cts.Dispose();
+            _cts = null;
+        }
+    }
+
     // ── Fork/Join рекурсивный обход ────────────────────────────────────────
 
-    private async Task ExecuteBranchAsync(Guid nodeId, MacroExecutionContext context, CancellationToken ct)
+    private async Task ExecuteBranchAsync(Guid nodeId, DataBusPacket? inputPacket, MacroExecutionContext context, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -93,12 +152,17 @@ public sealed class NodeEngine : INodeEngine
         bool isGate = node is Logic_QueueBlockNode;
         if (!isGate) context.BeginNode();
 
-        // Прокидываем sink → TryApplyContextInput сможет логировать ВХОД/ПРЕДУПРЕЖДЕНИЕ
-        node.DebugSink = DebugSink;
+        var result  = await ExecuteNodeWithWatchdogAsync(node, inputPacket, context, ct).ConfigureAwait(false);
+        bool success = result.IsSuccess;
 
-        bool success = await node
-            .ExecuteAsync(_serviceProvider, _logger, context, ct)
-            .ConfigureAwait(false);
+        // ── Macro Reset Protocol: перехватываем ResetRequest от MacroResetNode ──
+        if (result.OutputPacket?.Type == PortDataType.ResetRequest)
+        {
+            await _logger.LogInfoAsync(nameof(NodeEngine),
+                $"[RESET] Получен сигнал сброса от ноды '{node.Name}'. Выполняю ResetToDefault() для всех нод графа.")
+                .ConfigureAwait(false);
+            ResetAllNodes();
+        }
 
         if (!isGate) context.EndNode();
         if (!isGate && success) context.IncrementExecutedCount();
@@ -119,46 +183,27 @@ public sealed class NodeEngine : INodeEngine
         if (success && node is Logic_SequenceNode sequencer)
             await ExecuteSequencerStepsAsync(sequencer, context, ct).ConfigureAwait(false);
 
-        // ── Данные по серебряным проводам (до запуска следующих веток) ──────
-        // Запись в шину происходит ТОЛЬКО при наличии физического серебряного провода
-        // (IsDataRoute == true). Жёлтые/красные провода не инициируют запись In:{id}:{prop}.
-        if (success && node.IsDataOutputEnabled && node.LastOutputValue is not null)
+        // ── V3 Dual-Mode: маршрутизация BlackBox Log порта ──────────────────
+        // Если нода писала в BlackBox (есть LastBlackBoxMessage) и от неё протянут
+        // IsBlackBoxRoute-провод — создаём Text-пакет, кладём лог-текст в DataBus
+        // и запускаем ноду-приёмник (например, OverlayTextNode для UI-отладки).
+        if (!string.IsNullOrEmpty(node.LastBlackBoxMessage))
         {
-            var dataWires = _visualConnections
-                .Where(c => c.SourceNodeId == node.Id && c.IsDataRoute)
+            var bbWires = _visualConnections
+                .Where(c => c.SourceNodeId == nodeId && c.IsBlackBoxRoute)
                 .ToList();
 
-            if (dataWires.Count > 0)
+            if (bbWires.Count > 0)
             {
-                // Var_{sourceId} — сырое значение источника; пишем один раз для всех приёмников.
-                context.Variables[$"Var_{node.Id}"] = node.LastOutputValue;
+                var bbSid  = inputPacket?.SessionId ?? Guid.NewGuid();
+                var bbPkt  = DataBusPacket.Text(bbSid, node.Id);
+                var dataBus = _serviceProvider.GetService<IDataBus>();
+                dataBus?.Set(bbPkt.SessionId, bbPkt.DataId, node.LastBlackBoxMessage);
 
-                foreach (var wire in dataWires)
+                foreach (var wire in bbWires)
                 {
-                    if (!_nodes.TryGetValue(wire.TargetNodeId, out var dataTarget)) continue;
-
-                    string propName = dataTarget.DefaultDataInputPropertyName;
-                    if (string.IsNullOrEmpty(propName)) continue;
-
-                    // Адресная доставка: строго по целевому ID и имени свойства.
-                    context.Variables[$"In:{dataTarget.Id}:{propName}"] = node.LastOutputValue;
-
-                    var prop = dataTarget.GetType()
-                        .GetProperty(propName, BindingFlags.Public | BindingFlags.Instance);
-                    if (prop is not null)
-                    {
-                        // DataPacket не устанавливается рефлексией напрямую —
-                        // кастинг и распаковку выполнит TryApplyContextInput при выполнении ноды.
-                        if (node.LastOutputValue is not DataPacket)
-                        {
-                            try { prop.SetValue(dataTarget, node.LastOutputValue); }
-                            catch { /* несовместимые типы — TryApplyContextInput обработает при выполнении */ }
-                        }
-                        dataTarget.RaisePropertyChanged(prop.Name);
-                    }
-
-                    DebugSink?.Invoke(
-                        $"[ДАННЫЕ] → «{dataTarget.Name}».{propName} = \"{node.LastOutputValue}\"");
+                    ct.ThrowIfCancellationRequested();
+                    await ExecuteBranchAsync(wire.TargetNodeId, bbPkt, context, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -166,6 +211,10 @@ public sealed class NodeEngine : INodeEngine
         // ── Сбор всех следующих нод ────────────────────────────────────────
         var nextIds = GetConnectedNodeIds(nodeId, isSuccessRoute: success);
         if (nextIds.Count == 0) return;
+
+        // OutputPacket источника — передаётся только туда, куда физически подключён серебряный провод.
+        // Жёлтый (Signal) провод передаёт ТОЛЬКО право на выполнение (inputPacket = null для приёмника).
+        var childPacket = result.OutputPacket;
 
         // ── Разделение на шлюзы и обычные ноды ────────────────────────────
         // Полные шлюзы (WaitFullChain=true)  — запускаются ПОСЛЕ Task.WhenAll параллельных.
@@ -200,11 +249,11 @@ public sealed class NodeEngine : INodeEngine
                 .Select(x => x.id);
 
             foreach (var nextId in ordered)
-                await ExecuteBranchAsync(nextId, context, ct).ConfigureAwait(false);
+                await ExecuteBranchAsync(nextId, ResolveInputPacket(nodeId, nextId, childPacket), context, ct).ConfigureAwait(false);
 
             // Шлюзы после приоритетных нод — последовательно
             foreach (var gateId in fullGateIds.Concat(partialGateIds))
-                await ExecuteBranchAsync(gateId, context, ct).ConfigureAwait(false);
+                await ExecuteBranchAsync(gateId, ResolveInputPacket(nodeId, gateId, childPacket), context, ct).ConfigureAwait(false);
 
             return;
         }
@@ -216,7 +265,7 @@ public sealed class NodeEngine : INodeEngine
         // ── Fork обычных нод ────────────────────────────────────────────────
         Task[]? parallelTasks = regularIds.Count > 0
             ? regularIds
-                .Select(id => Task.Run(() => ExecuteBranchAsync(id, context, ct), ct))
+                .Select(id => Task.Run(() => ExecuteBranchAsync(id, ResolveInputPacket(nodeId, id, childPacket), context, ct), ct))
                 .ToArray()
             : null;
 
@@ -228,7 +277,7 @@ public sealed class NodeEngine : INodeEngine
                 await Task.WhenAll(parallelTasks).ConfigureAwait(false);
                 parallelTasks = null;
             }
-            await ExecuteBranchAsync(gateId, context, ct).ConfigureAwait(false);
+            await ExecuteBranchAsync(gateId, ResolveInputPacket(nodeId, gateId, childPacket), context, ct).ConfigureAwait(false);
         }
 
         // ── Частичные шлюзы: polling по ExecutedNodesCount ──────────────────
@@ -251,13 +300,13 @@ public sealed class NodeEngine : INodeEngine
                         await Task.Delay(50, ct).ConfigureAwait(false);
                     }
 
-                    await ExecuteBranchAsync(gateId, context, ct).ConfigureAwait(false);
+                    await ExecuteBranchAsync(gateId, ResolveInputPacket(nodeId, gateId, childPacket), context, ct).ConfigureAwait(false);
                     await allDoneTask.ConfigureAwait(false);
                     parallelTasks = null;
                 }
                 else
                 {
-                    await ExecuteBranchAsync(gateId, context, ct).ConfigureAwait(false);
+                    await ExecuteBranchAsync(gateId, ResolveInputPacket(nodeId, gateId, childPacket), context, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -296,15 +345,181 @@ public sealed class NodeEngine : INodeEngine
             var successConn = stepConns.FirstOrDefault(c => !c.IsErrorRoute && !c.IsDataRoute);
             if (successConn is not null)
             {
-                await ExecuteBranchAsync(successConn.TargetNodeId, context, ct).ConfigureAwait(false);
+                // Sequencer-шаги: null-пакет (данные идут через V2 context.Variables)
+                await ExecuteBranchAsync(successConn.TargetNodeId, null, context, ct).ConfigureAwait(false);
             }
             else
             {
                 var errorConn = stepConns.FirstOrDefault(c => c.IsErrorRoute);
                 if (errorConn is not null)
-                    await ExecuteBranchAsync(errorConn.TargetNodeId, context, ct).ConfigureAwait(false);
+                    await ExecuteBranchAsync(errorConn.TargetNodeId, null, context, ct).ConfigureAwait(false);
             }
         }
+    }
+
+    // ── V3 Event-Driven: регистрация триггеров ────────────────────────────
+
+    /// <summary>
+    /// Находит все ноды-триггеры, подключённые к startNodeId через success-провода,
+    /// выставляет им IsListening = true и вызывает OnStartListeningAsync.
+    /// Ноды, не подключённые к стартовой, остаются IsListening = false (обесточены).
+    /// </summary>
+    public async Task RegisterTriggersAsync(Guid startNodeId, CancellationToken ct = default)
+    {
+        var triggerIds = _visualConnections
+            .Where(c => c.SourceNodeId == startNodeId && !c.IsDataRoute && !c.IsErrorRoute)
+            .Select(c => c.TargetNodeId)
+            .Distinct();
+
+        foreach (var id in triggerIds)
+        {
+            if (!_nodes.TryGetValue(id, out var node)) continue;
+
+            node.IsListening = true;
+            node.DebugSink   = DebugSink;
+            await node.OnStartListeningAsync(ct).ConfigureAwait(false);
+            DebugSink?.Invoke($"[TRIGGER REGISTER] «{node.Name}» → IsListening=true");
+        }
+    }
+
+    // ── V3 Watchdog: обёртка выполнения ноды с таймаутом ─────────────────
+
+    // §2.5.1.1: NodeTimeoutMs = 0 → бесконечность (Watchdog не срабатывает по таймауту).
+    // §CSP 1.2.3.2: превышение Soft Timeout критической секции → NodeState.ERROR
+    //               + BlackBox: "Critical Section Soft Timeout exceeded: Context cascade canceled".
+    // §HEARTBEAT 1.3: обычный Watchdog timeout (не Critical Section) → NodeState.ZOMBIE.
+    private async Task<NodeResult> ExecuteNodeWithWatchdogAsync(
+        BaseNode node,
+        DataBusPacket? packet,
+        MacroExecutionContext context,
+        CancellationToken parentCt)
+    {
+        node.DebugSink = DebugSink;
+        node.SetLegacyContext(context);
+
+        // §2.5.1.1: 0 = бесконечность — Watchdog по таймауту не срабатывает
+        int timeoutMs = node.NodeTimeoutMs;
+
+        var blackBox = _serviceProvider.GetService<IBlackBoxLogger>();
+        var dataBus  = _serviceProvider.GetService<IDataBus>();
+
+        // CSP (Critical Section Protocol): ноды с IsCriticalSection=true получают
+        // изолированный токен — глобальный Stop() не отменяет их мгновенно.
+        // Для обычных нод: стандартная связка с parentCt (мгновенная отмена).
+        using var nodeCts = node.IsCriticalSection
+            ? new CancellationTokenSource()
+            : CancellationTokenSource.CreateLinkedTokenSource(parentCt);
+
+        var task = node.ExecuteAsync(_serviceProvider, _logger, blackBox, dataBus, packet, nodeCts.Token);
+
+        while (!task.IsCompleted)
+        {
+            try { await Task.Delay(500, parentCt).ConfigureAwait(false); }
+            catch (OperationCanceledException)
+            {
+                // parentCt сработал (пользователь нажал Stop)
+                if (node.IsCriticalSection && !task.IsCompleted)
+                {
+                    // CSP Soft Abort: критическая секция получает 5 сек на graceful exit
+                    node.SetState(NodeState.Waiting);
+                    blackBox?.Log(node.Id,
+                        $"[CSP SOFT ABORT] Нода '{node.Name}': критическая секция, " +
+                        "ожидаю самостоятельного завершения (5 сек)...");
+                    await _logger.LogWarningAsync(nameof(NodeEngine),
+                        $"[CSP] '{node.Name}' — глобальный Stop, Soft Timeout 5 сек.")
+                        .ConfigureAwait(false);
+
+                    await Task.WhenAny(task, Task.Delay(5_000)).ConfigureAwait(false);
+
+                    if (!task.IsCompleted)
+                    {
+                        // §CSP 1.2.3.2: Soft Timeout exceeded → NodeState.Error (не Zombie!)
+                        node.SetState(NodeState.Error);
+                        blackBox?.Log(node.Id,
+                            "Critical Section Soft Timeout exceeded: Context cascade canceled");
+                        await _logger.LogErrorAsync(nameof(NodeEngine),
+                            $"[CSP] '{node.Name}' не завершилась за 5 сек — Error.", null)
+                            .ConfigureAwait(false);
+                        nodeCts.Cancel();
+                        try { await task.ConfigureAwait(false); } catch { }
+                        return NodeResult.Failure(
+                            "Critical Section Soft Timeout exceeded: Context cascade canceled");
+                    }
+                }
+                break;
+            }
+
+            // §2.5.1.1: 0 = бесконечность — пропускаем проверку таймаута
+            if (timeoutMs == 0 || node.WatchdogElapsed.TotalMilliseconds <= timeoutMs) continue;
+
+            // ── Watchdog-таймаут: нода зависла без вызова ResetWatchdogTimer() ──
+            if (node.IsCriticalSection)
+            {
+                // Критическая секция: даём ещё 5 сек (Soft Timeout)
+                node.SetState(NodeState.Waiting);
+                blackBox?.Log(node.Id,
+                    $"[WATCHDOG SOFT] Нода '{node.Name}' превысила {timeoutMs}мс. " +
+                    "Критическая секция — ожидаю ещё 5 сек.");
+                try { await Task.WhenAny(task, Task.Delay(5_000, parentCt)).ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+
+                if (task.IsCompleted) break;
+
+                // §CSP 1.2.3.2: Soft Timeout exceeded → NodeState.Error (не Zombie!)
+                node.SetState(NodeState.Error);
+                blackBox?.Log(node.Id,
+                    "Critical Section Soft Timeout exceeded: Context cascade canceled");
+                await _logger.LogErrorAsync(nameof(NodeEngine),
+                    $"[WATCHDOG CSP] '{node.Name}': Critical Section Soft Timeout exceeded.", null)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                // §HEARTBEAT 1.3: обычная нода → ZOMBIE (не отвечала на Watchdog/Pong)
+                node.SetState(NodeState.Zombie);
+                blackBox?.Log(node.Id, $"[WATCHDOG ZOMBIE] Нода '{node.Name}' убита по таймауту {timeoutMs}мс.");
+                await _logger.LogErrorAsync(nameof(NodeEngine),
+                    $"[WATCHDOG] Нода '{node.Name}' [{node.Id}] превысила таймаут {timeoutMs}мс — ZOMBIE, принудительная отмена.", null)
+                    .ConfigureAwait(false);
+            }
+
+            nodeCts.Cancel();
+
+            try { await task.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (Exception) { }
+
+            return node.IsCriticalSection
+                ? NodeResult.Failure("Critical Section Soft Timeout exceeded: Context cascade canceled")
+                : NodeResult.Failure($"[WATCHDOG] Таймаут {timeoutMs}мс истёк для ноды '{node.Name}'.");
+        }
+
+        return await task.ConfigureAwait(false);
+    }
+
+    // ── Macro Reset Protocol ──────────────────────────────────────────────
+
+    private void ResetAllNodes()
+    {
+        foreach (var node in _nodes.Values)
+            node.ResetToDefault();
+    }
+
+    // ── Wire-type resolution: данные идут только по серебряному проводу ────
+
+    /// <summary>
+    /// Возвращает <paramref name="sourcePacket"/> только если от <paramref name="sourceNodeId"/>
+    /// к <paramref name="targetNodeId"/> проведён серебряный провод (IsDataRoute = true).
+    /// Жёлтый (Signal) провод передаёт исключительно право на выполнение — данные не передаются.
+    /// </summary>
+    private DataBusPacket? ResolveInputPacket(Guid sourceNodeId, Guid targetNodeId, DataBusPacket? sourcePacket)
+    {
+        if (sourcePacket is null) return null;
+        return _visualConnections.Any(c => c.SourceNodeId == sourceNodeId
+                                           && c.TargetNodeId == targetNodeId
+                                           && c.IsDataRoute)
+            ? sourcePacket
+            : null;
     }
 
     // ── Определение исходящих нод по визуальным связям (с fallback) ──────
@@ -316,6 +531,7 @@ public sealed class NodeEngine : INodeEngine
         var result = _visualConnections
             .Where(c => c.SourceNodeId == nodeId
                         && !c.IsDataRoute
+                        && !c.IsBlackBoxRoute   // BlackBox-провода обрабатываются отдельно
                         && c.IsErrorRoute == !isSuccessRoute)
             .Select(c => c.TargetNodeId)
             .Distinct()

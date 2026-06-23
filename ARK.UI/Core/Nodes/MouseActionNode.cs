@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,64 +50,64 @@ public sealed class MouseActionNode : BaseNode
         set { if (_scrollAmount != value) { _scrollAmount = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[МЫШЬ] Запуск. Действие: {ActionType}, координаты: ({X}, {Y})");
 
-        // ── Input: полная строка координат "X,Y" по серебряному проводу ───
-        bool hasCoord = TryApplyContextInput<string>("Coordinates", v =>
+        bool _hasInput = false;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _rawC))
         {
-            var p = v.Split(',', StringSplitOptions.TrimEntries);
-            if (p.Length == 2 && int.TryParse(p[0], out int px) && int.TryParse(p[1], out int py))
-            { X = px; Y = py; }
-        });
-        // Fallback: отдельные целочисленные входы
-        bool hasX = TryApplyContextInput<int>("X", v => X = v);
-        bool hasY = TryApplyContextInput<int>("Y", v => Y = v);
+            var _cs = _rawC as string ?? _rawC?.ToString();
+            if (_cs is not null)
+            {
+                var _pts = _cs.Split(',', StringSplitOptions.TrimEntries);
+                if (_pts.Length == 2 && int.TryParse(_pts[0], out int _px) && int.TryParse(_pts[1], out int _py))
+                { X = _px; Y = _py; _hasInput = true; }
+            }
+        }
 
-        if (hasCoord || hasX || hasY)
+        if (_hasInput)
             DebugSink?.Invoke($"[ВХОД] Динамические координаты приняты: ({X}, {Y})");
         else
             DebugSink?.Invoke($"[ВХОД] Используются статические координаты: ({X}, {Y})");
 
-        // ── Защитный барьер от ложных кликов при инициализации ноды ──────
         if (X == -1 && Y == -1)
         {
             DebugSink?.Invoke("[МЫШЬ] Координаты не заданы (безопасный режим) — действие пропущено.");
-            await logger.LogInfoAsync(Name,
-                "[ВВОД] Действие мыши пропущено: координаты не заданы (безопасный режим).")
+            await NodeLogger!.LogInfoAsync(Name, "[ВВОД] Действие мыши пропущено: координаты не заданы.")
                 .ConfigureAwait(false);
-            return true;
+            return NodeResult.Success(null);
         }
 
         DebugSink?.Invoke($"[МЫШЬ] Выполняю {ActionType} в ({X}, {Y})...");
-        var action = serviceProvider.GetRequiredService<IActionService>();
+        var action = NodeServices!.GetRequiredService<IActionService>();
 
         await (ActionType switch
         {
-            MouseActionType.LeftClick       => action.ClickAsync(X, Y, cancellationToken),
-            MouseActionType.RightClick      => action.RightClickAsync(X, Y, cancellationToken),
-            MouseActionType.DoubleLeftClick => action.DoubleClickAsync(X, Y, cancellationToken),
-            MouseActionType.Move            => action.MoveAsync(X, Y, cancellationToken),
-            MouseActionType.Scroll          => action.ScrollAsync(X, Y, ScrollAmount, cancellationToken),
-            MouseActionType.LeftButtonDown  => action.MouseButtonDownAsync(X, Y, cancellationToken),
-            MouseActionType.LeftButtonUp    => action.MouseButtonUpAsync(X, Y, cancellationToken),
+            MouseActionType.LeftClick       => action.ClickAsync(X, Y, ct),
+            MouseActionType.RightClick      => action.RightClickAsync(X, Y, ct),
+            MouseActionType.DoubleLeftClick => action.DoubleClickAsync(X, Y, ct),
+            MouseActionType.Move            => action.MoveAsync(X, Y, ct),
+            MouseActionType.Scroll          => action.ScrollAsync(X, Y, ScrollAmount, ct),
+            MouseActionType.LeftButtonDown  => action.MouseButtonDownAsync(X, Y, ct),
+            MouseActionType.LeftButtonUp    => action.MouseButtonUpAsync(X, Y, ct),
             _                               => Task.CompletedTask
         }).ConfigureAwait(false);
 
-        DebugSink?.Invoke($"[МЫШЬ] {ActionType} в ({X}, {Y}) выполнен ✓");
+        string _coords = $"{X},{Y}";
+        LastOutputValue = new DataPacket { Type = DataType.Text, Payload = _coords };
+        DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{_coords}»");
 
-        // ── Output: координаты в формате "X,Y" для цепочки нод ───────────
-        LastOutputValue = new DataPacket { Type = DataType.Text, Payload = $"{X},{Y}" };
-        DebugSink?.Invoke($"[ВЫХОД] DataPacket записан: «{X},{Y}»");
-
-        await logger.LogInfoAsync(Name,
-            $"[ВВОД] Симуляция мыши завершена: {ActionType} в координаты ({X}, {Y}).")
+        await NodeLogger!.LogInfoAsync(Name,
+            $"[ВВОД] Симуляция мыши завершена: {ActionType} в ({X}, {Y}).")
             .ConfigureAwait(false);
 
-        return true;
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, _coords);
+        return NodeResult.Success(_out);
     }
 }

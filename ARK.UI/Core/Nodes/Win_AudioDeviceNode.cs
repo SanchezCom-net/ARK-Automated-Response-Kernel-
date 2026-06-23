@@ -1,4 +1,4 @@
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using NAudio.CoreAudioApi;
 using System.Runtime.InteropServices;
 
@@ -41,15 +41,21 @@ public sealed class Win_AudioDeviceNode : BaseNode
         set { if (_isPlayback != value) { _isPlayback = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(DeviceName), v => DeviceName = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) DeviceName = _s;
+        }
 
         if (string.IsNullOrWhiteSpace(DeviceName))
         {
-            await logger.LogWarningAsync(Name, "[Win] Имя устройства не задано.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, "[Win] Имя устройства не задано.").ConfigureAwait(false);
+            return NodeResult.Failure("Имя устройства не задано.");
         }
 
         var dataFlow = IsPlayback ? DataFlow.Render : DataFlow.Capture;
@@ -65,8 +71,8 @@ public sealed class Win_AudioDeviceNode : BaseNode
 
         if (target is null)
         {
-            await logger.LogWarningAsync(Name, $"[Win] Устройство '{DeviceName}' не найдено в системе.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, $"[Win] Устройство '{DeviceName}' не найдено в системе.").ConfigureAwait(false);
+            return NodeResult.Failure($"Устройство '{DeviceName}' не найдено.");
         }
 
         var policyConfig = (IPolicyConfig)new PolicyConfigClient();
@@ -82,8 +88,8 @@ public sealed class Win_AudioDeviceNode : BaseNode
         }
 
         string direction = IsPlayback ? "вывода" : "ввода";
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[СИСТЕМА] Устройство {direction} по умолчанию успешно переключено на: '{target.FriendlyName}'.").ConfigureAwait(false);
-        return true;
+        return NodeResult.Success(null);
     }
 }

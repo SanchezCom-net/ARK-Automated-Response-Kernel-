@@ -3,7 +3,7 @@ using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
 using Windows.Storage;
 using Windows.Storage.Streams;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -25,34 +25,38 @@ public sealed class Vision_OcrNode : BaseNode
         set { if (_languageCode != value) { _languageCode = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(ImagePath), v => ImagePath = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) ImagePath = _s;
+        }
 
         if (string.IsNullOrWhiteSpace(ImagePath))
         {
-            await logger.LogErrorAsync(Name, "[OCR] Путь к изображению не указан.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, "[OCR] Путь к изображению не указан.").ConfigureAwait(false);
+            return NodeResult.Failure("Путь к изображению не указан.");
         }
 
         string absPath = Path.GetFullPath(ImagePath);
         if (!File.Exists(absPath))
         {
-            await logger.LogErrorAsync(Name, $"[OCR] Файл не найден: {absPath}").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, $"[OCR] Файл не найден: {absPath}").ConfigureAwait(false);
+            return NodeResult.Failure($"Файл не найден: {absPath}");
         }
 
         var language = new Windows.Globalization.Language(LanguageCode);
         var engine   = OcrEngine.TryCreateFromLanguage(language);
         if (engine is null)
         {
-            await logger.LogErrorAsync(Name,
+            await NodeLogger!.LogErrorAsync(Name,
                 $"[OCR] Язык «{LanguageCode}» не поддерживается или не установлен в системе.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure($"OCR: язык «{LanguageCode}» не поддерживается.");
         }
 
         StorageFile storageFile = await StorageFile.GetFileFromPathAsync(absPath);
@@ -61,10 +65,15 @@ public sealed class Vision_OcrNode : BaseNode
         using SoftwareBitmap bitmap       = await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
 
-        OcrResult result = await engine.RecognizeAsync(bitmap);
-        LastOutputValue  = result.Text;
+        OcrResult ocrResult = await engine.RecognizeAsync(bitmap);
+        string    ocrText   = ocrResult.Text;
+        LastOutputValue     = ocrText;
 
-        await logger.LogInfoAsync(Name, $"[OCR] Распознано: {result.Text.Length} симв.").ConfigureAwait(false);
-        return true;
+        await NodeLogger!.LogInfoAsync(Name, $"[OCR] Распознано: {ocrText.Length} симв.").ConfigureAwait(false);
+
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, ocrText);
+        return NodeResult.Success(_out);
     }
 }

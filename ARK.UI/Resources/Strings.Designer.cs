@@ -342,7 +342,13 @@ namespace ARK.UI.Resources {
         public static string Explorer_CtxCreateProfile { get { return ResourceManager.GetString("Explorer_CtxCreateProfile", resourceCulture); } }
         public static string Explorer_CtxCreateFolder  { get { return ResourceManager.GetString("Explorer_CtxCreateFolder",  resourceCulture); } }
         public static string Explorer_CtxCreateRegion  { get { return ResourceManager.GetString("Explorer_CtxCreateRegion",  resourceCulture); } }
-        public static string Explorer_CtxCreateMacro   { get { return ResourceManager.GetString("Explorer_CtxCreateMacro",   resourceCulture); } }
+        public static string Explorer_CtxCreateMacro    { get { return ResourceManager.GetString("Explorer_CtxCreateMacro",    resourceCulture); } }
+        public static string Explorer_CtxEdit            { get { return ResourceManager.GetString("Explorer_CtxEdit",            resourceCulture); } }
+        public static string Explorer_CtxDuplicate       { get { return ResourceManager.GetString("Explorer_CtxDuplicate",       resourceCulture); } }
+        public static string Explorer_CtxSendToRelease   { get { return ResourceManager.GetString("Explorer_CtxSendToRelease",   resourceCulture); } }
+        public static string Explorer_CtxReturnToBeta    { get { return ResourceManager.GetString("Explorer_CtxReturnToBeta",    resourceCulture); } }
+        public static string Explorer_CtxCreateSubFolder { get { return ResourceManager.GetString("Explorer_CtxCreateSubFolder", resourceCulture); } }
+        public static string Explorer_CtxCreateMacroHere { get { return ResourceManager.GetString("Explorer_CtxCreateMacroHere", resourceCulture); } }
 
         public static string Node_DelayMs              { get { return ResourceManager.GetString("Node_DelayMs",              resourceCulture); } }
         public static string Node_OverlayText          { get { return ResourceManager.GetString("Node_OverlayText",          resourceCulture); } }
@@ -703,5 +709,17 @@ namespace ARK.UI.Resources {
         public static string Obs_SaveBtn           { get { return ResourceManager.GetString("Obs_SaveBtn",           resourceCulture); } }
         public static string Obs_ScenesLabel       { get { return ResourceManager.GetString("Obs_ScenesLabel",       resourceCulture); } }
         public static string Obs_RefreshScenesBtn  { get { return ResourceManager.GetString("Obs_RefreshScenesBtn",  resourceCulture); } }
+
+        public static string Toolbox_Category_GuardianLogic   { get { return ResourceManager.GetString("Toolbox_Category_GuardianLogic",   resourceCulture); } }
+        public static string Toolbox_MacroPolicyNode_Name     { get { return ResourceManager.GetString("Toolbox_MacroPolicyNode_Name",     resourceCulture); } }
+        public static string Toolbox_MacroPolicyNode_Desc     { get { return ResourceManager.GetString("Toolbox_MacroPolicyNode_Desc",     resourceCulture); } }
+        public static string Toolbox_SynchronizerNode_Name    { get { return ResourceManager.GetString("Toolbox_SynchronizerNode_Name",    resourceCulture); } }
+        public static string Toolbox_SynchronizerNode_Desc    { get { return ResourceManager.GetString("Toolbox_SynchronizerNode_Desc",    resourceCulture); } }
+        public static string Toolbox_MacroResetNode_Name      { get { return ResourceManager.GetString("Toolbox_MacroResetNode_Name",      resourceCulture); } }
+        public static string Toolbox_MacroResetNode_Desc      { get { return ResourceManager.GetString("Toolbox_MacroResetNode_Desc",      resourceCulture); } }
+        public static string Blueprint_PortTriggerIn          { get { return ResourceManager.GetString("Blueprint_PortTriggerIn",          resourceCulture); } }
+        public static string Blueprint_PortDataIn             { get { return ResourceManager.GetString("Blueprint_PortDataIn",             resourceCulture); } }
+        public static string Blueprint_PortCustomData         { get { return ResourceManager.GetString("Blueprint_PortCustomData",         resourceCulture); } }
+        public static string Blueprint_PortBlackBox           { get { return ResourceManager.GetString("Blueprint_PortBlackBox",           resourceCulture); } }
     }
 }

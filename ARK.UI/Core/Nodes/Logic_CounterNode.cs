@@ -1,5 +1,4 @@
-using ARK.UI.Core.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -17,14 +16,15 @@ public sealed class Logic_CounterNode : BaseNode
     [System.Text.Json.Serialization.JsonIgnore]
     public int Current => _current;
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         _current++;
         LastOutputValue = _current;
         bool reached = _current >= Limit;
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[Counter] {_current}/{Limit} — {(reached ? "лимит достигнут" : "продолжаем")}").ConfigureAwait(false);
-        return reached;
+        return reached ? NodeResult.Success(null) : NodeResult.Failure("Лимит не достигнут.");
     }
 }

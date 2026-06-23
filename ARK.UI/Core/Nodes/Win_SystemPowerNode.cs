@@ -1,4 +1,4 @@
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Services;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -31,8 +31,9 @@ public sealed partial class Win_SystemPowerNode : BaseNode
         [MarshalAs(UnmanagedType.Bool)] bool bForce,
         [MarshalAs(UnmanagedType.Bool)] bool bWakeupEventsDisabled);
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[ПИТАНИЕ] Инициализация системного действия [{SelectedAction}]...");
 
@@ -81,14 +82,14 @@ public sealed partial class Win_SystemPowerNode : BaseNode
         catch (Exception ex)
         {
             DebugSink?.Invoke($"[СИСТЕМА] [ОШИБКА] Сбой [{SelectedAction}]: {ex.Message}");
-            await logger.LogErrorAsync(Name, $"[ПИТАНИЕ] Сбой действия [{SelectedAction}].", ex).ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, $"[ПИТАНИЕ] Сбой действия [{SelectedAction}].", ex).ConfigureAwait(false);
+            return NodeResult.Failure($"Сбой [{SelectedAction}]: {ex.Message}");
         }
 
         DebugSink?.Invoke($"[ПИТАНИЕ] [{SelectedAction}] завершено. Статус: {(isSuccess ? "Успех ✓" : "Ошибка ✗")}");
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[ПИТАНИЕ] [{SelectedAction}] → {(isSuccess ? "УСПЕХ" : "ОШИБКА")}").ConfigureAwait(false);
 
-        return isSuccess;
+        return isSuccess ? NodeResult.Success(null) : NodeResult.Failure($"Действие [{SelectedAction}] не выполнено.");
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Windows.Input;
 using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Models;
 using ARK.UI.Core.Services;
 
 namespace ARK.UI.Core.Network;
@@ -15,7 +16,8 @@ public sealed class NetworkCommandDispatcher
     private const string Component = "Network";
 
     private readonly ILogService             _logger;
-    private readonly IMacroScheduler         _scheduler;
+    private readonly IStorageManager         _storage;
+    private readonly IMacroOrchestrator      _orchestrator;
     private readonly IActionService          _actionService;
     private readonly IConfigService          _configService;
     private readonly IObsService             _obsService;
@@ -26,14 +28,16 @@ public sealed class NetworkCommandDispatcher
 
     public NetworkCommandDispatcher(
         ILogService             logger,
-        IMacroScheduler         scheduler,
+        IStorageManager         storage,
+        IMacroOrchestrator      orchestrator,
         IActionService          actionService,
         IConfigService          configService,
         IObsService             obsService,
         ISpeechSynthesisService ttsService)
     {
-        _logger        = logger;
-        _scheduler     = scheduler;
+        _logger       = logger;
+        _storage      = storage;
+        _orchestrator = orchestrator;
         _actionService = actionService;
         _configService = configService;
         _obsService    = obsService;
@@ -99,10 +103,24 @@ public sealed class NetworkCommandDispatcher
         if (string.IsNullOrWhiteSpace(nameOrId))
             return JsonRpcError(id, -32602, "Требуется параметр 'macroName' или 'macroId'.");
 
-        bool found = await _scheduler.ExecuteMacroAsync(nameOrId, ct).ConfigureAwait(false);
+        // Поиск по GUID или имени среди всех макросов
+        Guid? foundId = null;
+        if (Guid.TryParse(nameOrId, out var parsedGuid))
+        {
+            foundId = parsedGuid;
+        }
+        else
+        {
+            var all = await _storage.GetAllMacrosAsync(ct).ConfigureAwait(false);
+            var match = all.FirstOrDefault(m =>
+                m.Name.Equals(nameOrId, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) foundId = match.Id;
+        }
 
-        if (!found)
-            return JsonRpcError(id, -32602, $"Макрос '{nameOrId}' не найден ни в одном профиле.");
+        if (foundId is null)
+            return JsonRpcError(id, -32602, $"Макрос '{nameOrId}' не найден.");
+
+        await _orchestrator.EnqueueMacroAsync(foundId.Value, ct: ct).ConfigureAwait(false);
 
         await _logger.LogInfoAsync(Component,
             $"[NETWORK] Команда 'execute_macro' успешно выполнена: '{nameOrId}'.")
@@ -118,10 +136,10 @@ public sealed class NetworkCommandDispatcher
         if (string.IsNullOrWhiteSpace(text))
             return JsonRpcError(id, -32602, "Требуется параметр 'text'.");
 
-        await _scheduler.SendNetworkPromptAsync(text, ct).ConfigureAwait(false);
         await _logger.LogInfoAsync(Component,
-            "[NETWORK] Команда 'send_prompt' успешно выполнена.").ConfigureAwait(false);
-        return JsonRpcOk(id, new { queued = true });
+            $"[NETWORK] Команда 'send_prompt' получена: '{text}'. AI-маршрутизация недоступна в V3.")
+            .ConfigureAwait(false);
+        return JsonRpcOk(id, new { queued = false, reason = "AI routing not available in V3" });
     }
 
     private async Task<string> HandleGetStatusAsync(string? id, CancellationToken ct)

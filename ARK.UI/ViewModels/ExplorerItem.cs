@@ -2,18 +2,19 @@ using System.ComponentModel;
 
 namespace ARK.UI.ViewModels;
 
-public enum ExplorerItemKind { Profile, Folder, Region, Macro }
+public enum ExplorerItemKind { AppFolder, Folder, Region, Macro }
 
 public sealed class ExplorerItem : INotifyPropertyChanged
 {
-    private string _name      = string.Empty;
-    private bool   _isEnabled = true;
+    private string _name        = string.Empty;
+    private bool   _isEnabled   = true;
     private int    _priority;
+    private string _environment = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ExplorerItemKind Kind          { get; init; }
-    public object?          DataObject    { get; init; }
+    public ExplorerItemKind Kind           { get; init; }
+    public object?          DataObject     { get; init; }
     public bool             CanSetPriority { get; init; }
 
     public string Name
@@ -51,6 +52,22 @@ public sealed class ExplorerItem : INotifyPropertyChanged
         }
     }
 
+    /// <summary>"beta" или "release" — только для Kind=Macro</summary>
+    public string Environment
+    {
+        get => _environment;
+        set
+        {
+            if (_environment == value) return;
+            _environment = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Environment)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRelease)));
+        }
+    }
+
     public bool   HasPriority   => _priority > 0;
     public string PriorityBadge => _priority > 0 ? $"P{_priority}" : string.Empty;
+
+    /// <summary>true если макрос в Release (зелёная галочка). false — Beta (серая шестерёнка).</summary>
+    public bool IsRelease => string.Equals(_environment, "release", StringComparison.OrdinalIgnoreCase);
 }

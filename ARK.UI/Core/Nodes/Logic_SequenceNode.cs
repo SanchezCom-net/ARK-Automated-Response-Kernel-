@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Text.Json.Serialization;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Models;
 
 namespace ARK.UI.Core.Nodes;
@@ -34,14 +34,13 @@ public sealed class Logic_SequenceNode : BaseNode
         AddStep($"Шаг {Steps.Count + 1}");
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[ОЧЕРЕДЬ] Запуск последовательной очереди: {Steps.Count} шагов.")
             .ConfigureAwait(false);
-        return true;
+        return NodeResult.Success(null);
     }
 }

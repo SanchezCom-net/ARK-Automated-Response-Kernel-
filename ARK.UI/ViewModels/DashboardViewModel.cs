@@ -156,10 +156,10 @@ public sealed class DashboardViewModel : ViewModelBase, IDisposable
         networkService.ConnectionStatusChanged += OnConnectionStatusChanged;
         LocalizationService.CultureChanged     += OnCultureChanged;
 
-        // При открытии макроса из проводника — загружаем регион в Blueprint и переключаем вкладку
-        MacroExplorer.MacroOpenRequested += (profile, region, macro) =>
+        // При открытии макроса из проводника — загружаем документ в Blueprint и переключаем вкладку
+        MacroExplorer.MacroOpenRequested += doc =>
         {
-            BlueprintEditor.LoadFromMacro(profile, region, macro);
+            BlueprintEditor.LoadFromMacro(doc);
             SelectedTabIndex = 1;
         };
 

@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,15 +10,19 @@ public sealed class TextWriteNode : BaseNode
 
     public string Text { get; set; } = string.Empty;
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(Text), v => Text = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) Text = _s;
+        }
 
-        var actionService = serviceProvider.GetRequiredService<IActionService>();
-        await actionService.TypeTextAsync(Text, cancellationToken).ConfigureAwait(false);
-        return true;
+        var actionService = NodeServices!.GetRequiredService<IActionService>();
+        await actionService.TypeTextAsync(Text, ct).ConfigureAwait(false);
+        return NodeResult.Success(null);
     }
 }

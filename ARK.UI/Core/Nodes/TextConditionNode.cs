@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Models;
 using WpfApp       = System.Windows.Application;
 using WpfClipboard = System.Windows.Clipboard;
@@ -87,19 +87,21 @@ public sealed class TextConditionNode : BaseNode
         set { if (_transitOnInput != value) { _transitOnInput = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[УСЛОВИЕ] Запуск. Тип: {CompareType}");
 
-        // ── Входное значение: серебряный провод → буфер обмена (fallback) ─
-        bool hasInput = TryApplyContextInput<string>(nameof(InputValue), v => InputValue = v);
-        // Образец тоже может быть подан динамически через провод
-        TryApplyContextInput<string>(nameof(MatchValue), v => MatchValue = v);
+        bool _hasInput = false;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) { InputValue = _s; _hasInput = true; }
+        }
 
-        if (!hasInput)
+        if (!_hasInput)
         {
             InputValue = await WpfApp.Current.Dispatcher.InvokeAsync(() =>
             {
@@ -110,7 +112,7 @@ public sealed class TextConditionNode : BaseNode
         }
         else
         {
-            DebugSink?.Invoke($"[УСЛОВИЕ] Значение из провода: «{InputValue}»");
+            DebugSink?.Invoke($"[УСЛОВИЕ] Значение с DataBus: «{InputValue}»");
         }
 
         // ── Транзитный режим: пропускаем сравнение, отдаём InputValue как-есть ──
@@ -120,11 +122,14 @@ public sealed class TextConditionNode : BaseNode
             {
                 LastOutputValue = new DataPacket { Type = DataType.Text, Payload = InputValue ?? string.Empty };
                 DebugSink?.Invoke("[УСЛОВИЕ] [ТРАНЗИТ] Входящие данные получены. Пропускаю выполнение дальше.");
-                await logger.LogInfoAsync(Name, "[CONDITION] [TRANSIT] InputValue → транзит.").ConfigureAwait(false);
-                return true;
+                await NodeLogger!.LogInfoAsync(Name, "[CONDITION] [TRANSIT] InputValue → транзит.").ConfigureAwait(false);
+                var _tSid = inputPacket?.SessionId ?? Guid.NewGuid();
+                var _tOut = DataBusPacket.Text(_tSid);
+                DataBus?.Set(_tOut.SessionId, _tOut.DataId, InputValue ?? string.Empty);
+                return NodeResult.Success(_tOut);
             }
             DebugSink?.Invoke("[УСЛОВИЕ] [ТРАНЗИТ] Ожидание входящих данных...");
-            return false;
+            return NodeResult.Failure("Нет входных данных для транзита.", inputPacket);
         }
 
         var comparison = IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -250,10 +255,17 @@ public sealed class TextConditionNode : BaseNode
             ? $"«{InputValue}» в диапазоне [{MinValue}, {MaxValue}]"
             : $"«{InputValue}» vs «{MatchValue}»";
 
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[CONDITION] [{CompareType}] {logDetail} → {(result ? "ИСТИНА ✓" : "ЛОЖЬ ✗")}")
             .ConfigureAwait(false);
 
-        return result;
+        if (result)
+        {
+            var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+            var _out = DataBusPacket.Text(_sid);
+            DataBus?.Set(_out.SessionId, _out.DataId, InputValue ?? string.Empty);
+            return NodeResult.Success(_out);
+        }
+        return NodeResult.Failure("Условие не выполнено.", inputPacket);
     }
 }

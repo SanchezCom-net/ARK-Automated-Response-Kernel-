@@ -1,112 +1,77 @@
-using System.Collections.ObjectModel;
 using ARK.UI.Core.Models;
 
 namespace ARK.UI.ViewModels;
 
-// ── Базовый узел дерева очередей ─────────────────────────────────────────────
+// ── Базовый элемент плоского списка очередей ──────────────────────────────────
 
-public abstract class QueueNodeVm : ViewModelBase
+public abstract class QueueListItemVm : ViewModelBase
 {
-    private bool _isExpanded;
-    private bool _childrenLoaded;
-    private Func<IEnumerable<QueueNodeVm>>? _childFactory;
-
     public abstract string DisplayName { get; }
-    public ObservableCollection<QueueNodeVm> Children { get; } = [];
-
-    // Регистрирует фабрику дочерних узлов для ленивой загрузки.
-    // Фабрика вызывается один раз — при первом раскрытии узла.
-    protected void SetChildFactory(Func<IEnumerable<QueueNodeVm>> factory)
-        => _childFactory = factory;
-
-    public bool IsExpanded
-    {
-        get => _isExpanded;
-        set
-        {
-            if (!SetProperty(ref _isExpanded, value)) return;
-            if (value) EnsureChildrenLoaded();
-        }
-    }
-
-    // Загружает дочерние узлы, если ещё не были загружены.
-    // Вызывается при раскрытии узла или явно при восстановлении сохранённого IsExpanded=true.
-    public void EnsureChildrenLoaded()
-    {
-        if (_childrenLoaded || _childFactory is null) return;
-        _childrenLoaded = true;
-        foreach (var child in _childFactory())
-            Children.Add(child);
-    }
 }
 
-// ── Узел региона ─────────────────────────────────────────────────────────────
+// ── Элемент региона (корневой уровень) ───────────────────────────────────────
 
-public sealed class QueueRegionNodeVm : QueueNodeVm
+public sealed class RegionListItemVm : QueueListItemVm
 {
-    public QueueRegion Region { get; }
+    public RegionQueue Region { get; }
+
     public override string DisplayName => Region.Name;
 
-    // childFactory будет вызвана только при первом раскрытии узла.
-    public QueueRegionNodeVm(QueueRegion region, Func<IEnumerable<QueueNodeVm>> childFactory)
+    public string MacroCountLabel => Region.Entries.Count switch
     {
-        Region = region;
-        // Фабрика регистрируется ДО установки IsExpanded — если состояние = true,
-        // EnsureChildrenLoaded() внутри сеттера найдёт готовую фабрику.
-        SetChildFactory(childFactory);
-        IsExpanded = region.IsExpanded;
-    }
+        0         => "пусто",
+        1         => "1 макрос",
+        <= 4      => $"{Region.Entries.Count} макроса",
+        int n     => $"{n} макросов"
+    };
+
+    public RegionListItemVm(RegionQueue region) => Region = region;
 }
 
-// ── Узел папки внутри региона ─────────────────────────────────────────────────
+// ── Элемент макроса внутри региона ───────────────────────────────────────────
 
-public sealed class QueueFolderNodeVm : QueueNodeVm
+public sealed class MacroQueueItemVm : QueueListItemVm
 {
-    public QueueFolder  Folder       { get; }
-    public QueueRegion  ParentRegion { get; }
-    public override string DisplayName => Folder.Name;
+    public RegionQueueEntry Entry    { get; }
+    public MacroManifest    Manifest { get; }
+    public RegionQueue      Region   { get; }
 
-    public QueueFolderNodeVm(QueueFolder folder, QueueRegion parentRegion,
-        Func<IEnumerable<QueueNodeVm>>? childFactory = null)
+    public override string DisplayName => Manifest.Name;
+
+    public string Environment => Manifest.Environment;
+    public bool   IsRelease   => Manifest.Environment.Equals("release", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Родительский путь без имени макроса: "Программа  ›  Папка" или пусто.</summary>
+    public string LocationPath { get; }
+
+    /// <summary>true, если LocationPath непустой — управляет видимостью второй строки.</summary>
+    public bool HasLocationPath => !string.IsNullOrEmpty(LocationPath);
+
+    private int _priority;
+    public int Priority
     {
-        Folder       = folder;
-        ParentRegion = parentRegion;
-        if (childFactory is not null) SetChildFactory(childFactory);
-        IsExpanded = folder.IsExpanded;
-    }
-}
-
-// ── Узел-ссылка на макрос внутри региона ─────────────────────────────────────
-
-public sealed class QueueMacroRefNodeVm : QueueNodeVm
-{
-    public MacroEntry  Macro        { get; }
-    public AppProfile  Profile      { get; }
-    public QueueRegion ParentRegion { get; }
-    /// <summary>Отображаемый путь хранения: «Профиль / Папка / Подпапка»</summary>
-    public string      DisplayPath  { get; }
-
-    public override string DisplayName => Macro.Name;
-
-    public int QueuePriority
-    {
-        get => Macro.QueuePriority;
+        get => _priority;
         set
         {
-            if (Macro.QueuePriority == value) return;
-            Macro.QueuePriority = value;
-            OnPropertyChanged();
+            if (!SetProperty(ref _priority, value)) return;
             OnPropertyChanged(nameof(PriorityBadge));
+            OnPropertyChanged(nameof(HasPriority));
         }
     }
 
-    public string PriorityBadge => Macro.QueuePriority > 0 ? $"[{Macro.QueuePriority}]" : string.Empty;
+    public bool   HasPriority   => _priority > 0;
+    public string PriorityBadge => _priority > 0 ? $"P: {_priority}" : string.Empty;
 
-    public QueueMacroRefNodeVm(MacroEntry macro, AppProfile profile, QueueRegion region, string displayPath)
+    public MacroQueueItemVm(
+        RegionQueueEntry entry,
+        MacroManifest    manifest,
+        RegionQueue      region,
+        string           locationPath)
     {
-        Macro        = macro;
-        Profile      = profile;
-        ParentRegion = region;
-        DisplayPath  = displayPath;
+        Entry        = entry;
+        Manifest     = manifest;
+        Region       = region;
+        LocationPath = locationPath;
+        _priority    = entry.Priority;
     }
 }

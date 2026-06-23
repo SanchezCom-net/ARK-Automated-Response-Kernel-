@@ -1,4 +1,5 @@
 using System.IO;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,27 +25,33 @@ public sealed class Win_SpeakTextNode : BaseNode
         set { if (_selectedVoice != value) { _selectedVoice = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken ct)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(TextToSpeak), v => TextToSpeak = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) TextToSpeak = _s;
+        }
 
-        var tts        = serviceProvider.GetRequiredService<ISpeechSynthesisService>();
-        var config     = serviceProvider.GetRequiredService<IConfigService>().Current;
+        var tts         = NodeServices!.GetRequiredService<ISpeechSynthesisService>();
+        var config      = NodeServices!.GetRequiredService<IConfigService>().Current;
         var currentMode = config.SelectedTtsMode;
 
         if (currentMode == TtsMode.Disabled)
         {
-            await logger.LogWarningAsync(Name,
-                "[СИНТЕЗ] Синтез речи отключен в глобальных настройках. Переход по ветке On Error.")
+            await NodeLogger!.LogWarningAsync(Name,
+                "[СИНТЕЗ] Синтез речи отключен в глобальных настройках.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("Синтез речи отключен.");
         }
 
         if (string.IsNullOrWhiteSpace(TextToSpeak))
         {
-            await logger.LogWarningAsync(Name, "Текст для озвучки пуст. Пропуск.").ConfigureAwait(false);
-            return true;
+            await NodeLogger!.LogWarningAsync(Name, "Текст для озвучки пуст. Пропуск.").ConfigureAwait(false);
+            return NodeResult.Success(null);
         }
 
         var voiceName = string.IsNullOrWhiteSpace(SelectedVoice) ? config.SelectedTtsVoice : SelectedVoice;
@@ -52,10 +59,10 @@ public sealed class Win_SpeakTextNode : BaseNode
             ? voiceName + ".bin"
             : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Models", "TTS", "Piper", voiceName + ".onnx");
 
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[СИНТЕЗ] Озвучивание текста: '{TextToSpeak}' голосом '{voiceName}'...").ConfigureAwait(false);
 
         await tts.SpeakAsync(TextToSpeak, modelPath, config.TtsSpeed, config.TtsVolume, ct).ConfigureAwait(false);
-        return true;
+        return NodeResult.Success(null);
     }
 }

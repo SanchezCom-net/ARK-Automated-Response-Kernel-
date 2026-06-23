@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,34 +26,32 @@ public sealed class ObsRecordControlNode : BaseNode
         set { if (_action != value) { _action = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected)
         {
-            await logger.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
+            await NodeLogger!.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("OBS не подключён.");
         }
 
         if (SelectedMode == ObsSceneMode.Switch)
         {
             var task = Action switch
             {
-                ObsRecordActionType.Start  => obs.StartRecordingAsync(cancellationToken),
-                ObsRecordActionType.Stop   => obs.StopRecordingAsync(cancellationToken),
-                ObsRecordActionType.Toggle => obs.ToggleRecordingAsync(cancellationToken),
-                _                          => obs.ToggleRecordingAsync(cancellationToken)
+                ObsRecordActionType.Start  => obs.StartRecordingAsync(ct),
+                ObsRecordActionType.Stop   => obs.StopRecordingAsync(ct),
+                ObsRecordActionType.Toggle => obs.ToggleRecordingAsync(ct),
+                _                          => obs.ToggleRecordingAsync(ct)
             };
             await task.ConfigureAwait(false);
-            return true;
+            return NodeResult.Success(null);
         }
 
-        // CheckActive: Start → запись идёт; Stop → запись остановлена; Toggle → текущее состояние
-        var isRecording = await obs.IsRecordingAsync(cancellationToken).ConfigureAwait(false);
+        var isRecording = await obs.IsRecordingAsync(ct).ConfigureAwait(false);
         var isMatch = Action switch
         {
             ObsRecordActionType.Start  => isRecording,
@@ -60,9 +59,9 @@ public sealed class ObsRecordControlNode : BaseNode
             ObsRecordActionType.Toggle => isRecording,
             _                          => isRecording
         };
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[OBS] Проверка записи (Action={Action}): {(isMatch ? "УСЛОВИЕ ВЫПОЛНЕНО" : "УСЛОВИЕ НЕ ВЫПОЛНЕНО")} (Запись идёт: {isRecording})")
             .ConfigureAwait(false);
-        return isMatch;
+        return isMatch ? NodeResult.Success(null) : NodeResult.Failure("Условие записи OBS не выполнено.");
     }
 }

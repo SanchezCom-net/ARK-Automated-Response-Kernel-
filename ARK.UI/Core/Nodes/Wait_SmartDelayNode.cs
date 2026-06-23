@@ -1,4 +1,4 @@
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Services;
 using System.Diagnostics;
 
@@ -50,14 +50,16 @@ public sealed class Wait_SmartDelayNode : BaseNode
         set { if (_timeoutSec != value) { _timeoutSec = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(TimeoutSec);
 
         while (DateTime.UtcNow < deadline)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
+            ResetWatchdogTimer(); // не даём Orchestrator'у объявить ноду ZOMBIE при долгом ожидании
 
             bool conditionMet = WaitType == SmartWaitType.UntilWindowActive
                 ? CheckWindowActive()
@@ -65,16 +67,16 @@ public sealed class Wait_SmartDelayNode : BaseNode
 
             if (conditionMet)
             {
-                await logger.LogInfoAsync(Name, $"[Wait] Условие выполнено ({WaitType}).").ConfigureAwait(false);
-                return true;
+                await NodeLogger!.LogInfoAsync(Name, $"[Wait] Условие выполнено ({WaitType}).").ConfigureAwait(false);
+                return NodeResult.Success(null);
             }
 
-            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(100, ct).ConfigureAwait(false);
         }
 
-        await logger.LogWarningAsync(Name,
+        await NodeLogger!.LogWarningAsync(Name,
             $"[Wait] Таймаут {TimeoutSec} сек истёк — условие не выполнено.").ConfigureAwait(false);
-        return false;
+        return NodeResult.Failure($"Таймаут {TimeoutSec} сек истёк.");
     }
 
     private bool CheckWindowActive()

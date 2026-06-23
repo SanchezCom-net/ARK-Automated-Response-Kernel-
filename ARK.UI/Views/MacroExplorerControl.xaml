@@ -12,9 +12,6 @@
         <!--
             BreadcrumbButtonStyle: OverridesDefaultStyle=True гарантирует, что кнопки хлебных крошек
             НЕ наследуют глобальный Button-стиль из Buttons.xaml.
-            Глобальный стиль содержит Storyboard-анимации с TargetName="MainBorder"; когда они
-            запускаются из DataTemplate внутри DataTemplate, WPF не может разрешить имя в
-            скоупе ControlTemplate и бросает InvalidOperationException.
         -->
         <Style x:Key="BreadcrumbButtonStyle" TargetType="Button">
             <Setter Property="OverridesDefaultStyle" Value="True"/>
@@ -31,7 +28,7 @@
             </Setter>
         </Style>
 
-        <!-- Компактная кнопка для действий в панели настроек профиля -->
+        <!-- Компактная кнопка для действий в панели контекстной привязки -->
         <Style x:Key="ProfileActionButtonStyle" TargetType="Button">
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="Background"            Value="#FF252525"/>
@@ -66,7 +63,6 @@
             </Setter>
         </Style>
 
-        <!-- Стиль CheckBox в панели настроек профиля — наследует глобальный ControlTemplate -->
         <Style x:Key="ProfileCheckBoxStyle" TargetType="CheckBox"
                BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Foreground" Value="#FFCCAA44"/>
@@ -74,7 +70,6 @@
             <Setter Property="Margin"     Value="0,0,0,5"/>
         </Style>
 
-        <!-- Стиль TextBox в панели настроек профиля — наследует глобальный ControlTemplate -->
         <Style x:Key="ProfileTextBoxStyle" TargetType="TextBox"
                BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Background"     Value="#FF1A1A1A"/>
@@ -85,7 +80,6 @@
             <Setter Property="SelectionBrush" Value="#66CCAA44"/>
         </Style>
 
-        <!-- Стиль ComboBox в панели настроек профиля — наследует глобальный ControlTemplate -->
         <Style x:Key="ProfileComboBoxStyle" TargetType="ComboBox"
                BasedOn="{StaticResource {x:Type ComboBox}}">
             <Setter Property="Background" Value="#FF1A1A1A"/>
@@ -98,9 +92,9 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>  <!-- 0: Навигация -->
+            <RowDefinition Height="Auto"/>  <!-- 0: Навигация / хлебные крошки -->
             <RowDefinition Height="Auto"/>  <!-- 1: Тулбар -->
-            <RowDefinition Height="Auto"/>  <!-- 2: Настройки профиля -->
+            <RowDefinition Height="Auto"/>  <!-- 2: Панель контекстной привязки (AppFolder) -->
             <RowDefinition Height="*"/>     <!-- 3: Контент -->
         </Grid.RowDefinitions>
 
@@ -110,7 +104,6 @@
                 BorderThickness="0,0,0,1"
                 Padding="10,7">
             <DockPanel>
-                <!-- Кнопка назад -->
                 <Button DockPanel.Dock="Left"
                         Command="{Binding NavigateBackCommand}"
                         Padding="8,4"
@@ -118,7 +111,6 @@
                     <TextBlock Text="{x:Static res:Strings.Explorer_Back}" FontSize="12"/>
                 </Button>
 
-                <!-- Breadcrumbs -->
                 <ItemsControl DockPanel.Dock="Left"
                               ItemsSource="{Binding Breadcrumbs}"
                               VerticalAlignment="Center">
@@ -154,26 +146,17 @@
                 Padding="10,7">
             <StackPanel Orientation="Horizontal">
 
-                <!-- Создать программу (только на корневом уровне) -->
-                <Button Command="{Binding CreateProfileCommand}"
+                <!-- Создать AppFolder (программу) -->
+                <Button Command="{Binding CreateAppFolderCommand}"
                         Padding="9,4"
                         Margin="0,0,6,0">
-                    <Button.Style>
-                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                            <Style.Triggers>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.3"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="📁" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="🖥" FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{x:Static res:Strings.Explorer_CreateProfile}" FontSize="12" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
 
-                <!-- Создать обычную папку (только внутри программы или папки) -->
+                <!-- Создать обычную папку -->
                 <Button Command="{Binding CreateFolderCommand}"
                         Padding="9,4"
                         Margin="0,0,6,0">
@@ -183,7 +166,7 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Создать макрос (только внутри программы или папки) -->
+                <!-- Создать макрос -->
                 <Button Command="{Binding CreateMacroCommand}"
                         Padding="9,4"
                         Margin="0,0,6,0">
@@ -193,37 +176,14 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Разделитель -->
                 <Separator Width="1" Height="16"
                            Background="#FF3A3A3A"
                            VerticalAlignment="Center"
                            Margin="3,0,9,0"/>
 
-                <!-- Экспорт профиля (активна при выборе профиля) -->
-                <Button Command="{Binding ExportProfileCommand}"
-                        ToolTip="Экспорт профиля в зашифрованный пакет .ark"
-                        Padding="9,4"
-                        Margin="0,0,6,0">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Width="12" Height="12"
-                              Stretch="Uniform"
-                              Data="M6,9 L6,1 M3,4 L6,1 9,4 M1,11 L11,11"
-                              Stroke="{StaticResource GoldBrush}"
-                              StrokeThickness="1.5"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              StrokeLineJoin="Round"
-                              Margin="0,0,5,0"
-                              VerticalAlignment="Center"/>
-                        <TextBlock Text="{x:Static res:Strings.Profile_Export}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Импорт профиля (всегда активна) -->
-                <Button Command="{Binding ImportProfileCommand}"
-                        ToolTip="Импорт профиля из пакета .ark"
+                <!-- Импорт .arkmacro -->
+                <Button Command="{Binding ImportMacroCommand}"
+                        ToolTip="Импортировать макрос из файла .arkmacro"
                         Padding="9,4">
                     <StackPanel Orientation="Horizontal">
                         <Path Width="12" Height="12"
@@ -245,40 +205,29 @@
             </StackPanel>
         </Border>
 
-        <!-- ══ Панель настроек профиля (Row 2, видна только на уровне InProfile) ═══ -->
+        <!-- ══ Панель контекстной привязки (Row 2, видна только для AppFolder) ═ -->
         <Border Grid.Row="2"
-                Visibility="{Binding IsProfileSettingsVisible, Converter={StaticResource BtV}}"
+                Visibility="{Binding IsContextBindingVisible, Converter={StaticResource BtV}}"
                 BorderBrush="#FF2A2A2A"
                 BorderThickness="0,0,0,1"
                 Background="#FF111111"
                 Padding="12,10,12,12">
             <StackPanel>
 
-                <!-- Заголовок секции -->
                 <TextBlock Text="{x:Static res:Strings.Profile_SectionTitle}"
                            FontSize="9"
                            FontWeight="Bold"
                            Foreground="#FF666666"
                            Margin="0,0,0,9"/>
 
-                <!-- Флаг IsGlobal -->
                 <CheckBox Style="{StaticResource ProfileCheckBoxStyle}"
                           Content="{x:Static res:Strings.Profile_IsGlobal}"
-                          IsChecked="{Binding ProfileIsGlobal}"/>
+                          IsChecked="{Binding CbIsGlobal}"/>
 
-                <!-- Секция привязки к процессу — скрывается при IsGlobal=True -->
-                <StackPanel Margin="0,4,0,0">
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ProfileIsGlobal}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
+                <!-- Секция привязки к процессу — скрывается при CbIsGlobal=True -->
+                <StackPanel Margin="0,4,0,0"
+                            Visibility="{Binding CbIsProcessVisible, Converter={StaticResource BtV}}">
 
-                    <!-- Процесс: ComboBox + кнопка Обновить -->
                     <Grid Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -297,8 +246,7 @@
                                   Style="{StaticResource ProfileComboBoxStyle}"
                                   IsEditable="True"
                                   ItemsSource="{Binding ProcessSuggestions}"
-                                  SelectedItem="{Binding SelectedProcess}"
-                                  Text="{Binding ProfileTargetProcess, UpdateSourceTrigger=PropertyChanged}"
+                                  Text="{Binding CbTargetProcess, UpdateSourceTrigger=PropertyChanged}"
                                   TextSearch.TextPath="ProcessName"
                                   Margin="0,0,5,0">
                             <ComboBox.ItemTemplate>
@@ -335,12 +283,10 @@
                                 ToolTip="Обновить список запущенных процессов"/>
                     </Grid>
 
-                    <!-- FocusRequired -->
                     <CheckBox Style="{StaticResource ProfileCheckBoxStyle}"
                               Content="{x:Static res:Strings.Profile_FocusRequired}"
-                              IsChecked="{Binding ProfileFocusRequired}"/>
+                              IsChecked="{Binding CbFocusRequired}"/>
 
-                    <!-- Фильтр заголовка окна -->
                     <Grid Margin="0,2,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -356,15 +302,14 @@
 
                         <TextBox Grid.Column="1"
                                  Style="{StaticResource ProfileTextBoxStyle}"
-                                 Text="{Binding ProfileWindowTitleFilter, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Фильтр по части заголовка окна (регистр не важен)"/>
+                                 Text="{Binding CbTitleFilter, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Фильтр по части заголовка окна"/>
                     </Grid>
 
                 </StackPanel>
 
-                <!-- Кнопка применить изменения -->
                 <Button Style="{StaticResource ProfileActionButtonStyle}"
-                        Command="{Binding SaveProfileCommand}"
+                        Command="{Binding SaveContextBindingCommand}"
                         HorizontalAlignment="Right"
                         Margin="0,10,0,0"
                         Padding="12,5"
@@ -380,28 +325,103 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
 
-            <!-- Контекстное меню пустого пространства холста (не карточки) -->
+            <!-- Контекстное меню пустого пространства (фильтрация Root / Inside) -->
             <ScrollViewer.ContextMenu>
                 <ContextMenu>
+
+                    <!-- ROOT ONLY: Создать программу -->
                     <MenuItem Header="{x:Static res:Strings.Explorer_CtxCreateProfile}"
-                              Command="{Binding PlacementTarget.DataContext.CreateProfileCommand,
-                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                              Command="{Binding PlacementTarget.DataContext.CreateAppFolderCommand,
+                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsAtRoot,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <!-- INSIDE ONLY: Создать папку -->
                     <MenuItem Header="{x:Static res:Strings.Explorer_CtxCreateFolder}"
                               Command="{Binding PlacementTarget.DataContext.CreateFolderCommand,
-                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsInsideFolder,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <!-- INSIDE ONLY: Создать макрос -->
                     <MenuItem Header="{x:Static res:Strings.Explorer_CtxCreateMacro}"
                               Command="{Binding PlacementTarget.DataContext.CreateMacroCommand,
-                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                    <Separator/>
-                    <MenuItem Header="{x:Static res:Strings.Explorer_Paste}"
-                              Command="{Binding PlacementTarget.DataContext.PasteMacroCommand,
-                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsInsideFolder,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
+                    <!-- INSIDE ONLY: separator + Импорт -->
+                    <Separator>
+                        <Separator.Style>
+                            <Style TargetType="Separator" BasedOn="{StaticResource ObsidianSeparatorStyle}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsInsideFolder,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Separator.Style>
+                    </Separator>
+
+                    <MenuItem Header="{x:Static res:Strings.Profile_Import}"
+                              Command="{Binding PlacementTarget.DataContext.ImportMacroCommand,
+                                        RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                        <MenuItem.Style>
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PlacementTarget.DataContext.IsInsideFolder,
+                                                 RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                 Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </MenuItem.Style>
+                    </MenuItem>
+
                 </ContextMenu>
             </ScrollViewer.ContextMenu>
 
             <Grid>
 
-                <!-- Заглушка для пустого состояния -->
+                <!-- Заглушка пустого состояния -->
                 <StackPanel HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             Margin="0,40"
@@ -424,7 +444,7 @@
                 <!-- Сетка значков -->
                 <ItemsControl x:Name="IconGrid"
                               ItemsSource="{Binding Items}"
-                              Margin="8,8,8,8">
+                              Margin="8">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal"/>
@@ -444,28 +464,25 @@
                                     <SolidColorBrush x:Name="BgBrush" Color="#00000000"/>
                                 </Border.Background>
 
-                                <!-- Двойной клик: зайти внутрь (папка) или открыть (макрос) -->
+                                <!-- Одиночный клик — выбор (для панели привязки AppFolder) -->
                                 <Border.InputBindings>
+                                    <MouseBinding MouseAction="LeftClick"
+                                                  Command="{Binding DataContext.SelectItemCommand,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                  CommandParameter="{Binding}"/>
                                     <MouseBinding MouseAction="LeftDoubleClick"
                                                   Command="{Binding DataContext.NavigateIntoCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                   CommandParameter="{Binding}"/>
                                 </Border.InputBindings>
 
-                                <!-- Контекстное меню -->
+                                <!-- ── Единое контекстное меню (секции управляются Visibility) ── -->
                                 <Border.ContextMenu>
                                     <ContextMenu>
-                                        <!-- Переименовать -->
-                                        <MenuItem Header="{x:Static res:Strings.Explorer_Rename}"
-                                                  Command="{Binding PlacementTarget.Tag.RenameItemCommand,
-                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                  CommandParameter="{Binding PlacementTarget.DataContext,
-                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
-                                        <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
 
-                                        <!-- Отключить макрос (Kind==Macro && IsEnabled==True) -->
-                                        <MenuItem Header="{x:Static res:Strings.Macro_Disable}"
-                                                  Command="{Binding PlacementTarget.Tag.ToggleMacroEnabledCommand,
+                                        <!-- ── СЕКЦИЯ: Папки (AppFolder / Folder) ────────────── -->
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxCreateSubFolder}"
+                                                  Command="{Binding PlacementTarget.Tag.CreateSubFolderCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                                   CommandParameter="{Binding PlacementTarget.DataContext,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
@@ -473,25 +490,23 @@
                                                 <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                     <Style.Triggers>
-                                                        <MultiDataTrigger>
-                                                            <MultiDataTrigger.Conditions>
-                                                                <Condition Binding="{Binding PlacementTarget.DataContext.Kind,
-                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                                           Value="{x:Static vm:ExplorerItemKind.Macro}"/>
-                                                                <Condition Binding="{Binding PlacementTarget.DataContext.IsEnabled,
-                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                                           Value="True"/>
-                                                            </MultiDataTrigger.Conditions>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.AppFolder}">
                                                             <Setter Property="Visibility" Value="Visible"/>
-                                                        </MultiDataTrigger>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.Folder}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </MenuItem.Style>
                                         </MenuItem>
 
-                                        <!-- Включить макрос (Kind==Macro && IsEnabled==False) -->
-                                        <MenuItem Header="{x:Static res:Strings.Macro_Enable}"
-                                                  Command="{Binding PlacementTarget.Tag.ToggleMacroEnabledCommand,
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxCreateMacroHere}"
+                                                  Command="{Binding PlacementTarget.Tag.CreateMacroHereCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                                   CommandParameter="{Binding PlacementTarget.DataContext,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
@@ -499,27 +514,44 @@
                                                 <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                     <Style.Triggers>
-                                                        <MultiDataTrigger>
-                                                            <MultiDataTrigger.Conditions>
-                                                                <Condition Binding="{Binding PlacementTarget.DataContext.Kind,
-                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                                           Value="{x:Static vm:ExplorerItemKind.Macro}"/>
-                                                                <Condition Binding="{Binding PlacementTarget.DataContext.IsEnabled,
-                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                                           Value="False"/>
-                                                            </MultiDataTrigger.Conditions>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.AppFolder}">
                                                             <Setter Property="Visibility" Value="Visible"/>
-                                                        </MultiDataTrigger>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.Folder}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </MenuItem.Style>
                                         </MenuItem>
 
-                                        <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
+                                        <Separator>
+                                            <Separator.Style>
+                                                <Style TargetType="Separator" BasedOn="{StaticResource ObsidianSeparatorStyle}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.AppFolder}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.Folder}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Separator.Style>
+                                        </Separator>
 
-                                        <!-- Копировать макрос -->
-                                        <MenuItem Header="{x:Static res:Strings.Explorer_Copy}"
-                                                  Command="{Binding PlacementTarget.Tag.CopyMacroCommand,
+                                        <!-- ── СЕКЦИЯ: Только макросы ────────────────────────── -->
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxEdit}"
+                                                  Command="{Binding PlacementTarget.Tag.EditMacroCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                                   CommandParameter="{Binding PlacementTarget.DataContext,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
@@ -537,9 +569,9 @@
                                             </MenuItem.Style>
                                         </MenuItem>
 
-                                        <!-- Задать приоритет в очереди... -->
-                                        <MenuItem Header="{x:Static res:Strings.Explorer_SetPriority}"
-                                                  Command="{Binding PlacementTarget.Tag.SetMacroPriorityCommand,
+                                        <!-- Отправить в Release (только Beta-макросы) -->
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxSendToRelease}"
+                                                  Command="{Binding PlacementTarget.Tag.PromoteCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                                   CommandParameter="{Binding PlacementTarget.DataContext,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
@@ -547,9 +579,75 @@
                                                 <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.CanSetPriority,
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                           Value="{x:Static vm:ExplorerItemKind.Macro}"/>
+                                                                <Condition Binding="{Binding PlacementTarget.DataContext.IsRelease,
+                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                           Value="False"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
+
+                                        <!-- Вернуть в Beta (только Release-макросы) -->
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxReturnToBeta}"
+                                                  Command="{Binding PlacementTarget.Tag.DemoteCommand,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                           Value="{x:Static vm:ExplorerItemKind.Macro}"/>
+                                                                <Condition Binding="{Binding PlacementTarget.DataContext.IsRelease,
+                                                                           RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                           Value="True"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
+
+                                        <Separator>
+                                            <Separator.Style>
+                                                <Style TargetType="Separator" BasedOn="{StaticResource ObsidianSeparatorStyle}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
                                                                      RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
-                                                                     Value="True">
+                                                                     Value="{x:Static vm:ExplorerItemKind.Macro}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Separator.Style>
+                                        </Separator>
+
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_CtxDuplicate}"
+                                                  Command="{Binding PlacementTarget.Tag.DuplicateMacroCommand,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.Macro}">
                                                             <Setter Property="Visibility" Value="Visible"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -557,23 +655,54 @@
                                             </MenuItem.Style>
                                         </MenuItem>
 
+                                        <!-- Экспорт (.arkmacro) — только Macro -->
+                                        <MenuItem Header="{x:Static res:Strings.Profile_Export}"
+                                                  Command="{Binding PlacementTarget.Tag.ExportMacroCommand,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PlacementTarget.DataContext.Kind,
+                                                                     RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                                     Value="{x:Static vm:ExplorerItemKind.Macro}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
+                                        </MenuItem>
+
+                                        <!-- ── ОБЩАЯ СЕКЦИЯ: Переименовать / Удалить ───────────── -->
                                         <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
-                                        <!-- Удалить -->
+
+                                        <MenuItem Header="{x:Static res:Strings.Explorer_Rename}"
+                                                  Command="{Binding PlacementTarget.Tag.RenameItemCommand,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                  CommandParameter="{Binding PlacementTarget.DataContext,
+                                                            RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+
+                                        <Separator Style="{StaticResource ObsidianSeparatorStyle}"/>
+
                                         <MenuItem Header="{x:Static res:Strings.Explorer_Delete}"
                                                   Command="{Binding PlacementTarget.Tag.DeleteItemCommand,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
                                                   CommandParameter="{Binding PlacementTarget.DataContext,
                                                             RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"/>
+
                                     </ContextMenu>
                                 </Border.ContextMenu>
 
-                                <!-- Иконка + название -->
+                                <!-- ── Иконка + название ──────────────────────────────────── -->
                                 <StackPanel HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             Margin="4">
 
-                                    <!-- Контейнер иконки -->
                                     <Grid Width="44" Height="44" HorizontalAlignment="Center">
+
+                                        <!-- Основная иконка (emoji) -->
                                         <TextBlock x:Name="IconText"
                                                    Text="📁"
                                                    FontSize="34"
@@ -581,17 +710,34 @@
                                                    VerticalAlignment="Center"
                                                    Foreground="{StaticResource GoldBrush}"/>
 
-                                        <!-- Рубиновый бейдж Q — только для региона-очереди -->
-                                        <Border x:Name="RegionBadge"
-                                                Background="{StaticResource RubyBrush}"
+                                        <!-- Зелёный бейдж ✔ для Release-макросов -->
+                                        <Border x:Name="ReleaseBadge"
+                                                Background="#FF1A5C1A"
                                                 Width="17" Height="17"
                                                 CornerRadius="4"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Bottom"
                                                 Margin="0,0,-3,-3"
                                                 Visibility="Collapsed">
-                                            <TextBlock Text="Q"
+                                            <TextBlock Text="✔"
                                                        FontSize="9"
+                                                       FontWeight="Bold"
+                                                       Foreground="#FF44FF44"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+
+                                        <!-- Оранжевый бейдж β — Beta-макросы -->
+                                        <Border x:Name="BetaBadge"
+                                                Background="#FFCC7700"
+                                                Width="17" Height="17"
+                                                CornerRadius="4"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Top"
+                                                Margin="0,-3,-3,0"
+                                                Visibility="Collapsed">
+                                            <TextBlock Text="β"
+                                                       FontSize="10"
                                                        FontWeight="Bold"
                                                        Foreground="White"
                                                        HorizontalAlignment="Center"
@@ -616,7 +762,6 @@
                                         </Border>
                                     </Grid>
 
-                                    <!-- Название элемента -->
                                     <TextBlock x:Name="NameText"
                                                Text="{Binding Name}"
                                                FontSize="11"
@@ -629,28 +774,43 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- DataTemplate.Triggers: дифференциация по виду элемента -->
+                            <!-- DataTemplate.Triggers: дифференциация вида -->
                             <DataTemplate.Triggers>
 
-                                <!-- Регион: показываем рубиновый бейдж "Q" -->
+                                <!-- AppFolder: иконка 🖥 -->
                                 <DataTrigger Binding="{Binding Kind}"
-                                             Value="{x:Static vm:ExplorerItemKind.Region}">
-                                    <Setter TargetName="RegionBadge" Property="Visibility" Value="Visible"/>
+                                             Value="{x:Static vm:ExplorerItemKind.AppFolder}">
+                                    <Setter TargetName="IconText" Property="Text"     Value="🖥"/>
+                                    <Setter TargetName="IconText" Property="FontSize" Value="30"/>
                                 </DataTrigger>
 
-                                <!-- Макрос: меняем иконку на шестерёнку -->
+                                <!-- Макрос: иконка шестерёнки -->
                                 <DataTrigger Binding="{Binding Kind}"
                                              Value="{x:Static vm:ExplorerItemKind.Macro}">
                                     <Setter TargetName="IconText" Property="Text"     Value="⚙"/>
                                     <Setter TargetName="IconText" Property="FontSize" Value="30"/>
                                 </DataTrigger>
 
+                                <!-- Release-макрос: зелёный бейдж ✔ -->
+                                <DataTrigger Binding="{Binding IsRelease}" Value="True">
+                                    <Setter TargetName="ReleaseBadge" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+
+                                <!-- Beta-макрос: оранжевый бейдж β -->
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Kind}"      Value="{x:Static vm:ExplorerItemKind.Macro}"/>
+                                        <Condition Binding="{Binding IsRelease}" Value="False"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter TargetName="BetaBadge" Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+
                                 <!-- Макрос с приоритетом: золотой бейдж P{N} -->
                                 <DataTrigger Binding="{Binding HasPriority}" Value="True">
                                     <Setter TargetName="PriorityBadge" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
 
-                                <!-- Отключённый макрос: приглушённый Obsidian Dust стиль -->
+                                <!-- Отключённый макрос: приглушённость -->
                                 <DataTrigger Binding="{Binding IsEnabled}" Value="False">
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
@@ -672,8 +832,8 @@
                                             </Storyboard>
                                         </BeginStoryboard>
                                     </DataTrigger.ExitActions>
-                                    <Setter TargetName="IconText"  Property="Foreground" Value="#FF888888"/>
-                                    <Setter TargetName="NameText"  Property="Foreground" Value="#FF888888"/>
+                                    <Setter TargetName="IconText" Property="Foreground" Value="#FF888888"/>
+                                    <Setter TargetName="NameText" Property="Foreground" Value="#FF888888"/>
                                 </DataTrigger>
 
                                 <!-- Hover: плавная подсветка фона -->

@@ -1,6 +1,6 @@
 using System.Net.Http;
 using System.Text;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -37,31 +37,42 @@ public sealed class Web_RequestNode : BaseNode
         set { if (_requestBody != value) { _requestBody = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(Url),         v => Url         = v);
-        TryApplyContextInput<string>(nameof(RequestBody), v => RequestBody = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) Url = _s;
+        }
 
         if (string.IsNullOrWhiteSpace(Url))
         {
-            await logger.LogWarningAsync(Name, "[HTTP] URL не задан.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, "[HTTP] URL не задан.").ConfigureAwait(false);
+            return NodeResult.Failure("URL не задан.");
         }
 
         HttpResponseMessage response = Method == HttpRequestMethod.POST
             ? await _httpClient
-                .PostAsync(Url, new StringContent(RequestBody, Encoding.UTF8, "application/json"), cancellationToken)
+                .PostAsync(Url, new StringContent(RequestBody, Encoding.UTF8, "application/json"), ct)
                 .ConfigureAwait(false)
-            : await _httpClient.GetAsync(Url, cancellationToken).ConfigureAwait(false);
+            : await _httpClient.GetAsync(Url, ct).ConfigureAwait(false);
 
-        string responseText = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        string responseText = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         LastOutputValue = responseText;
 
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[HTTP] {Method} {Url} → {(int)response.StatusCode} ({responseText.Length} симв.)")
             .ConfigureAwait(false);
 
-        return response.IsSuccessStatusCode;
+        if (!response.IsSuccessStatusCode)
+            return NodeResult.Failure($"HTTP {(int)response.StatusCode}");
+
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, responseText);
+        return NodeResult.Success(_out);
     }
 }

@@ -1,4 +1,4 @@
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -20,17 +20,12 @@ public sealed class Logic_QueueBlockNode : BaseNode
         set { if (_waitNodesCount != value) { _waitNodesCount = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        // NodeEngine обеспечивает ожидание ДО вызова этого метода:
-        //   WaitFullChain=true  → Task.WhenAll всех параллельных задач предыдущего шага.
-        //   WaitFullChain=false → задержка до достижения WaitNodesCount завершений.
-        // Нода служит визуальным маркером барьера и просто пропускает управление дальше.
-        await logger.LogInfoAsync(Name, "[ШЛЮЗ] Барьер синхронизации пройден.")
+        await NodeLogger!.LogInfoAsync(Name, "[ШЛЮЗ] Барьер синхронизации пройден.")
             .ConfigureAwait(false);
-        return true;
+        return NodeResult.Success(null);
     }
 }

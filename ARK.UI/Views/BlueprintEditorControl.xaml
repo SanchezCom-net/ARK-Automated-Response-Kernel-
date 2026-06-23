@@ -18,6 +18,7 @@
             <!-- Конвертеры -->
             <converters:HotKeyTextConverter x:Key="HotKeyTextConverter"/>
             <converters:EnumToLocalizedDescriptionConverter x:Key="EnumToLocalizedDescriptionConverter"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
             <!-- ══ Стиль тултипа ObsidianToolTipStyle ════════════════════════ -->
             <Style x:Key="ObsidianToolTipStyle" TargetType="ToolTip">
@@ -205,7 +206,7 @@
                 </StackPanel>
             </DataTemplate>
 
-            <!-- TriggerRootNode: панель свойств — только информационная плашка -->
+            <!-- TriggerRootNode: панель свойств — точка входа + политика коллизий -->
             <DataTemplate DataType="{x:Type nodes:TriggerRootNode}">
                 <StackPanel>
                     <TextBlock Text="ТОЧКА ВХОДА МАКРОСА"
@@ -214,7 +215,59 @@
                                Margin="0,0,0,6"/>
                     <TextBlock TextWrapping="Wrap"
                                Foreground="#FF888888" FontFamily="Consolas" FontSize="9"
-                               Text="Все триггерные ноды (Хоткей, Голос) соединяются через зелёный провод Success к этой ноде. Выполнение графа начинается здесь."/>
+                               Margin="0,0,0,10"
+                               Text="Триггерные ноды (Хоткей, Голос) соединяются через зелёный провод к этой ноде. Выполнение начинается с сработавшего триггера."/>
+
+                    <!-- Self-Collision Policy -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4" VerticalAlignment="Center">
+                        <TextBlock Text="ПРИ ПОВТОРНОМ ТРИГГЕРЕ:"
+                                   Foreground="#FF888888" FontFamily="Consolas" FontSize="9"
+                                   VerticalAlignment="Center"/>
+                        <Button Style="{StaticResource ObsidianHelpButtonStyle}" Margin="6,0,0,0">
+                            <Button.ToolTip>
+                                <ToolTip Style="{StaticResource ObsidianToolTipStyle}">
+                                    <StackPanel MaxWidth="320">
+                                        <TextBlock Text="ЗАЩИТА ОТ ПОВТОРНОГО ЗАПУСКА"
+                                                   Foreground="#FFF5D77F" FontFamily="Consolas"
+                                                   FontSize="10" FontWeight="Bold" Margin="0,0,0,10"/>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                                   Foreground="#FFA0A0A0" FontFamily="Consolas" FontSize="9"
+                                                   Text="Определяет поведение, когда триггер срабатывает повторно, пока макрос уже выполняется:"/>
+                                        <TextBlock Margin="0,0,0,3">
+                                            <Run Text="ПАРАЛЛЕЛЬНО — " Foreground="#FFF5D77F" FontFamily="Consolas" FontSize="9" FontWeight="Bold"/>
+                                            <Run Text="каждый триггер запускает отдельную ветку." Foreground="#FFA0A0A0" FontFamily="Consolas" FontSize="9"/>
+                                        </TextBlock>
+                                        <TextBlock Margin="0,0,0,3">
+                                            <Run Text="ИГНОРИРОВАТЬ — " Foreground="#FFF5D77F" FontFamily="Consolas" FontSize="9" FontWeight="Bold"/>
+                                            <Run Text="новый триггер отбрасывается до завершения текущего." Foreground="#FFA0A0A0" FontFamily="Consolas" FontSize="9"/>
+                                        </TextBlock>
+                                        <TextBlock Margin="0,0,0,3">
+                                            <Run Text="В ОЧЕРЕДЬ — " Foreground="#FFF5D77F" FontFamily="Consolas" FontSize="9" FontWeight="Bold"/>
+                                            <Run Text="один вызов ожидает завершения предыдущего." Foreground="#FFA0A0A0" FontFamily="Consolas" FontSize="9"/>
+                                        </TextBlock>
+                                        <TextBlock>
+                                            <Run Text="ПЕРЕЗАПУСТИТЬ — " Foreground="#FFF5D77F" FontFamily="Consolas" FontSize="9" FontWeight="Bold"/>
+                                            <Run Text="текущее выполнение отменяется, макрос стартует заново." Foreground="#FFA0A0A0" FontFamily="Consolas" FontSize="9"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </ToolTip>
+                            </Button.ToolTip>
+                        </Button>
+                    </StackPanel>
+                    <ComboBox ItemsSource="{Binding Source={x:Static nodes:TriggerRootNode.AllCollisionStrategies}}"
+                              SelectedItem="{Binding CollisionStrategy}"
+                              Foreground="#FFF5D77F"
+                              Margin="0,0,0,0">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ClipToBounds="True">
+                                    <TextBlock Text="{Binding ., Converter={StaticResource EnumToLocalizedDescriptionConverter}}"
+                                               Foreground="#FFF5D77F"
+                                               Style="{StaticResource MarqueeTextBlockStyle}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </StackPanel>
             </DataTemplate>
 
@@ -2636,25 +2689,83 @@
                                           Canvas.Left="0" Canvas.Top="0">
                                         <Path.Style>
                                             <Style TargetType="Path">
+                                                <!-- Дефолт: золотой провод Success с мягким неоновым свечением -->
                                                 <Setter Property="Stroke" Value="#FFD4AF37"/>
+                                                <Setter Property="Effect" Value="{StaticResource GoldWireEffect}"/>
                                                 <Style.Triggers>
+                                                    <!-- Рубиновый: Error -->
                                                     <DataTrigger Binding="{Binding IsErrorRoute}" Value="True">
                                                         <Setter Property="Stroke" Value="#FFD32F2F"/>
+                                                        <Setter Property="Effect" Value="{StaticResource RubyWireEffect}"/>
                                                     </DataTrigger>
+                                                    <!-- Серебряный: Data Out -->
                                                     <DataTrigger Binding="{Binding IsDataRoute}" Value="True">
                                                         <Setter Property="Stroke" Value="{StaticResource SilverDataPortBrush}"/>
+                                                        <Setter Property="Effect" Value="{StaticResource SilverWireEffect}"/>
                                                     </DataTrigger>
-                                                    <!-- Изумрудный провод: триггер → TriggerRootNode -->
+                                                    <!-- Сиреневый: Custom Data Out (переопределяет Silver) -->
+                                                    <DataTrigger Binding="{Binding IsCustomDataRoute}" Value="True">
+                                                        <Setter Property="Stroke" Value="{StaticResource CustomDataWireBrush}"/>
+                                                        <Setter Property="Effect" Value="{StaticResource CustomDataWireEffect}"/>
+                                                    </DataTrigger>
+                                                    <!-- Грифельно-синий: Black Box Log (переопределяет Silver) -->
+                                                    <DataTrigger Binding="{Binding IsBlackBoxRoute}" Value="True">
+                                                        <Setter Property="Stroke" Value="{StaticResource BlackBoxWireBrush}"/>
+                                                        <Setter Property="Effect" Value="{StaticResource BlackBoxWireEffect}"/>
+                                                    </DataTrigger>
+                                                    <!-- Изумрудный: провод от TriggerRootNode -->
                                                     <DataTrigger Binding="{Binding IsTriggerRoute}" Value="True">
                                                         <Setter Property="Stroke"          Value="{StaticResource TriggerWireBrush}"/>
                                                         <Setter Property="StrokeThickness" Value="2"/>
-                                                        <Setter Property="Effect"          Value="{StaticResource TriggerWireGlowEffect}"/>
+                                                        <Setter Property="Effect"          Value="{StaticResource TriggerWireEffect}"/>
                                                     </DataTrigger>
-                                                    <!-- Мятный провод: между блоками очереди -->
+                                                    <!-- Мятный: провода между блоками очереди -->
                                                     <DataTrigger Binding="{Binding IsQueueLink}" Value="True">
                                                         <Setter Property="Stroke"          Value="{StaticResource QueueWireBrush}"/>
                                                         <Setter Property="StrokeThickness" Value="2"/>
-                                                        <Setter Property="Effect"          Value="{StaticResource QueueWireGlowEffect}"/>
+                                                        <Setter Property="Effect"          Value="{StaticResource QueueWireEffect}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Path.Style>
+                                    </Path>
+
+                                    <!-- Пульс активного исполнения: светящийся орб летит по безье от источника к цели -->
+                                    <!-- Орб: белое ядро (Stroke=White) + цветной неон (DropShadowEffect) по типу провода -->
+                                    <Path x:Name="PulsePath"
+                                          Data="{Binding BezierPath}"
+                                          Fill="Transparent"
+                                          Stroke="White"
+                                          StrokeThickness="4"
+                                          StrokeLineJoin="Round"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          Opacity="0"
+                                          Canvas.Left="0" Canvas.Top="0">
+                                        <Path.StrokeDashArray>
+                                            <DoubleCollection>2 30</DoubleCollection>
+                                        </Path.StrokeDashArray>
+                                        <Path.Style>
+                                            <Style TargetType="Path">
+                                                <Setter Property="Effect" Value="{StaticResource GoldPulseEffect}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsErrorRoute}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource RubyPulseEffect}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsDataRoute}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource SilverPulseEffect}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsCustomDataRoute}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource CustomDataPulseEffect}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsBlackBoxRoute}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource BlackBoxPulseEffect}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsTriggerRoute}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource TriggerPulseEffect}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsQueueLink}" Value="True">
+                                                        <Setter Property="Effect" Value="{StaticResource QueuePulseEffect}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -2664,27 +2775,54 @@
                                 </Canvas>
 
                                 <DataTemplate.Triggers>
-                                    <!-- Бегущий пунктир при активном исполнении -->
+                                    <!-- Пульс активного исполнения: орб летит по проводу, базовый провод приглушён -->
                                     <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                        <Setter TargetName="ConnectionPath" Property="StrokeThickness" Value="2.5"/>
-                                        <Setter TargetName="ConnectionPath" Property="StrokeDashArray">
-                                            <Setter.Value>
-                                                <DoubleCollection>5 5</DoubleCollection>
-                                            </Setter.Value>
-                                        </Setter>
+                                        <Setter TargetName="ConnectionPath" Property="Opacity" Value="0.4"/>
+                                        <Setter TargetName="PulsePath"      Property="Opacity" Value="1"/>
                                         <DataTrigger.EnterActions>
-                                            <BeginStoryboard x:Name="DashSB" HandoffBehavior="SnapshotAndReplace">
+                                            <BeginStoryboard x:Name="PulseSB" HandoffBehavior="SnapshotAndReplace">
                                                 <Storyboard RepeatBehavior="Forever">
-                                                    <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                    <DoubleAnimation Storyboard.TargetName="PulsePath"
                                                                      Storyboard.TargetProperty="StrokeDashOffset"
-                                                                     From="10" To="0" Duration="0:0:0.4"/>
+                                                                     From="32" To="0" Duration="0:0:0.45"/>
                                                 </Storyboard>
                                             </BeginStoryboard>
                                         </DataTrigger.EnterActions>
                                         <DataTrigger.ExitActions>
-                                            <StopStoryboard BeginStoryboardName="DashSB"/>
+                                            <StopStoryboard BeginStoryboardName="PulseSB"/>
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
+                                    <!-- Hover: утолщение провода + усиление свечения за 100 мс -->
+                                    <EventTrigger RoutedEvent="Path.MouseEnter" SourceName="ConnectionPath">
+                                        <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="StrokeThickness"
+                                                                 To="3.5" Duration="0:0:0.1"/>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                                                 To="18" Duration="0:0:0.1"/>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                                                 To="0.9" Duration="0:0:0.1"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                    <EventTrigger RoutedEvent="Path.MouseLeave" SourceName="ConnectionPath">
+                                        <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="StrokeThickness"
+                                                                 To="2" Duration="0:0:0.15"/>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                                                 To="8" Duration="0:0:0.15"/>
+                                                <DoubleAnimation Storyboard.TargetName="ConnectionPath"
+                                                                 Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                                                 To="0.5" Duration="0:0:0.15"/>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -2716,25 +2854,47 @@
                                         <ColumnDefinition Width="14"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Порт In -->
-                                    <Ellipse Grid.Column="0" Tag="In"
-                                             Width="12" Height="12"
-                                             Fill="#FF3A3A3A" Stroke="#FF888888"
-                                             StrokeThickness="1"
-                                             VerticalAlignment="Center"
-                                             HorizontalAlignment="Center"
-                                             Cursor="Hand" ToolTip="{x:Static res:Strings.Blueprint_PortIn}">
-                                        <Ellipse.Style>
-                                            <Style TargetType="Ellipse">
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Fill"   Value="#FF555555"/>
-                                                        <Setter Property="Stroke" Value="#FFD4AF37"/>
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Ellipse.Style>
-                                    </Ellipse>
+                                    <!-- Левая колонка: 2 входных порта V3 -->
+                                    <!-- Trigger In: Margin=0,21 → центр Y+27; Data In: Margin=0,37 → центр Y+43 -->
+                                    <Grid Grid.Column="0">
+                                        <Ellipse Tag="In"
+                                                 Width="14" Height="14"
+                                                 Fill="#FFD4AF37" Stroke="#FFAA7C11"
+                                                 StrokeThickness="1"
+                                                 VerticalAlignment="Top" Margin="0,20,0,0"
+                                                 HorizontalAlignment="Center"
+                                                 Cursor="Hand" ToolTip="{x:Static res:Strings.Blueprint_PortTriggerIn}">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Fill"   Value="#FFF5D77F"/>
+                                                            <Setter Property="Effect" Value="{StaticResource GoldGlowEffect}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <Ellipse Tag="InData"
+                                                 Width="14" Height="14"
+                                                 Fill="#FF1A1A1A" Stroke="{StaticResource SilverDataPortBrush}"
+                                                 StrokeThickness="1"
+                                                 VerticalAlignment="Top" Margin="0,36,0,0"
+                                                 HorizontalAlignment="Center"
+                                                 Cursor="Hand" ToolTip="{x:Static res:Strings.Blueprint_PortDataIn}">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Fill"   Value="#FF444444"/>
+                                                            <Setter Property="Stroke" Value="#FFE8E8E8"/>
+                                                            <Setter Property="Effect" Value="{StaticResource SilverGlowEffect}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                    </Grid>
 
                                     <!-- Золотое свечение: Executing / Success -->
                                     <Border x:Name="GoldGlowBorder"
@@ -2826,16 +2986,31 @@
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="#FF666666"/>
-                                                        <Setter Property="Text" Value="{Binding State}"/>
+                                                        <Setter Property="Text"       Value="Ожидание"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding State}" Value="Executing">
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
                                                                 <Setter Property="Foreground" Value="#FFD4AF37"/>
+                                                                <Setter Property="Text"       Value="Выполняется..."/>
                                                             </DataTrigger>
-                                                            <DataTrigger Binding="{Binding State}" Value="Success">
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
                                                                 <Setter Property="Foreground" Value="#FF7FBB4A"/>
+                                                                <Setter Property="Text"       Value="Успешно"/>
                                                             </DataTrigger>
-                                                            <DataTrigger Binding="{Binding State}" Value="Failed">
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
                                                                 <Setter Property="Foreground" Value="#FFD32F2F"/>
+                                                                <Setter Property="Text"       Value="Ошибка"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Waiting">
+                                                                <Setter Property="Foreground" Value="#FF8888CC"/>
+                                                                <Setter Property="Text"       Value="Ожидание события"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Error">
+                                                                <Setter Property="Foreground" Value="#FFFF6060"/>
+                                                                <Setter Property="Text"       Value="Ошибка (timeout)"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Zombie">
+                                                                <Setter Property="Foreground" Value="#FFFF4444"/>
+                                                                <Setter Property="Text"       Value="ZOMBIE"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -2844,10 +3019,12 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Выходные порты -->
-                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                    <!-- Правая колонка: 3 основных порта (14×14) -->
+                                    <!-- Success Y+12, Data Y+30, CustomData Y+48 -->
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="0,5,0,0">
+                                        <!-- 1. Success Trigger (Signal, Gold) Y+12 -->
                                         <Ellipse Tag="Success"
-                                                 Width="12" Height="12"
+                                                 Width="14" Height="14"
                                                  Fill="#FFD4AF37" Stroke="#FFAA7C11"
                                                  StrokeThickness="1"
                                                  HorizontalAlignment="Center"
@@ -2864,8 +3041,9 @@
                                                 </Style>
                                             </Ellipse.Style>
                                         </Ellipse>
+                                        <!-- 2. Data Out (Data, Silver) Y+30 -->
                                         <Ellipse Tag="Data"
-                                                 Width="12" Height="12"
+                                                 Width="14" Height="14"
                                                  Fill="#FF2A2A2A" Stroke="{StaticResource SilverDataPortBrush}"
                                                  StrokeThickness="1"
                                                  HorizontalAlignment="Center"
@@ -2883,19 +3061,68 @@
                                                 </Style>
                                             </Ellipse.Style>
                                         </Ellipse>
-                                        <Ellipse Tag="Error"
-                                                 Width="12" Height="12"
-                                                 Fill="#FF8B0000" Stroke="#FF5A0000"
+                                        <!-- 3. Custom Data Out (Data, Slate-purple) Y+48 -->
+                                        <Ellipse Tag="CustomData"
+                                                 Width="14" Height="14"
+                                                 Fill="#FF252535" Stroke="#FF7F7FBF"
                                                  StrokeThickness="1"
                                                  HorizontalAlignment="Center"
+                                                 Cursor="Cross" ToolTip="{x:Static res:Strings.Blueprint_PortCustomData}">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Fill"   Value="#FF3A3A6A"/>
+                                                            <Setter Property="Stroke" Value="#FFAAAAFF"/>
+                                                            <Setter Property="Effect" Value="{StaticResource CustomDataWireGlowEffect}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                    </StackPanel>
+
+                                    <!-- Нижняя грань карточки: системные порты (14×14) -->
+                                    <!-- ColumnSpan=3, HAlign=Right, Margin="0,0,20,-7"          -->
+                                    <!-- Grid H=55 → StackPanel.Bottom=62, Center Y=55           -->
+                                    <!-- Error X+143 Y+55 | BlackBox X+161 Y+55                  -->
+                                    <StackPanel Grid.Column="0" Grid.ColumnSpan="3"
+                                                Orientation="Horizontal"
+                                                VerticalAlignment="Bottom"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,0,20,-7">
+                                        <!-- Error Trigger (Signal, Ruby) — нижняя грань, X+143 Y+55 -->
+                                        <Ellipse Tag="Error"
+                                                 Width="14" Height="14"
+                                                 Fill="#FF8B0000" Stroke="#FF5A0000"
+                                                 StrokeThickness="1"
+                                                 Margin="0,0,4,0"
                                                  Cursor="Cross" ToolTip="{x:Static res:Strings.Blueprint_PortError}">
                                             <Ellipse.Style>
                                                 <Style TargetType="Ellipse">
                                                     <Style.Triggers>
                                                         <Trigger Property="IsMouseOver" Value="True">
                                                             <Setter Property="Fill"   Value="{StaticResource RubyBrush}"/>
-                                                            <Setter Property="Stroke" Value="{StaticResource RubyBrush}"/>
+                                                            <Setter Property="Stroke" Value="#FFFF5555"/>
                                                             <Setter Property="Effect" Value="{StaticResource RubyGlowEffect}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <!-- Black Box Log (Data, Slate-blue) — нижняя грань, X+161 Y+55 -->
+                                        <Ellipse Tag="BlackBox"
+                                                 Width="14" Height="14"
+                                                 Fill="#FF1A2040" Stroke="#FF5B9BD5"
+                                                 StrokeThickness="1"
+                                                 Cursor="Cross" ToolTip="{x:Static res:Strings.Blueprint_PortBlackBox}">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Fill"   Value="#FF2A3A6A"/>
+                                                            <Setter Property="Stroke" Value="#FF90C8FF"/>
+                                                            <Setter Property="Effect" Value="{StaticResource BlackBoxWireGlowEffect}"/>
                                                         </Trigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -2957,7 +3184,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Executing: золотое пульсирование 800 мс, бесконечно -->
-                                    <DataTrigger Binding="{Binding State}" Value="Executing">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
                                         <Setter TargetName="GoldGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="ExecutingSB" HandoffBehavior="SnapshotAndReplace">
@@ -2977,7 +3204,7 @@
                                     </DataTrigger>
 
                                     <!-- Success: кратная золотая вспышка 500 мс, однократно -->
-                                    <DataTrigger Binding="{Binding State}" Value="Success">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
                                         <Setter TargetName="GoldGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="SuccessSB" HandoffBehavior="SnapshotAndReplace">
@@ -2997,7 +3224,7 @@
                                     </DataTrigger>
 
                                     <!-- Failed: рубиновое резкое пульсирование 400 мс, бесконечно -->
-                                    <DataTrigger Binding="{Binding State}" Value="Failed">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
                                         <Setter TargetName="RubyGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="FailedSB" HandoffBehavior="SnapshotAndReplace">
@@ -3041,6 +3268,28 @@
                                             BorderThickness="0">
                                         <Border.Effect>
                                             <DropShadowEffect Color="#FFD4AF37" BlurRadius="24" ShadowDepth="0" Opacity="0.7"/>
+                                        </Border.Effect>
+                                    </Border>
+
+                                    <!-- Пульсирующее золотое свечение при Executing/Success -->
+                                    <Border x:Name="TriggerGoldGlowBorder"
+                                            Grid.Column="1"
+                                            IsHitTestVisible="False"
+                                            Visibility="Collapsed"
+                                            CornerRadius="8">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#FFD4AF37" BlurRadius="4" ShadowDepth="0" Opacity="0.3"/>
+                                        </Border.Effect>
+                                    </Border>
+
+                                    <!-- Рубиновое свечение при Failed -->
+                                    <Border x:Name="TriggerRubyGlowBorder"
+                                            Grid.Column="1"
+                                            IsHitTestVisible="False"
+                                            Visibility="Collapsed"
+                                            CornerRadius="8">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#FFE53935" BlurRadius="8" ShadowDepth="0" Opacity="0.4"/>
                                         </Border.Effect>
                                     </Border>
 
@@ -3089,13 +3338,19 @@
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="#FF666666"/>
-                                                        <Setter Property="Text" Value="{Binding State}"/>
+                                                        <Setter Property="Text"       Value="Ожидание"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding State}" Value="Executing">
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
                                                                 <Setter Property="Foreground" Value="#FFD4AF37"/>
+                                                                <Setter Property="Text"       Value="Выполняется..."/>
                                                             </DataTrigger>
-                                                            <DataTrigger Binding="{Binding State}" Value="Success">
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
                                                                 <Setter Property="Foreground" Value="#FF7FBB4A"/>
+                                                                <Setter Property="Text"       Value="Успешно"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
+                                                                <Setter Property="Foreground" Value="#FFD32F2F"/>
+                                                                <Setter Property="Text"       Value="Ошибка"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -3123,6 +3378,152 @@
                                             </Style>
                                         </Ellipse.Style>
                                     </Ellipse>
+                                </Grid>
+
+                                <DataTemplate.Triggers>
+                                    <!-- Executing: золотое пульсирование -->
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
+                                        <Setter TargetName="TriggerGoldGlowBorder" Property="Visibility" Value="Visible"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="TriggerExecutingSB" HandoffBehavior="SnapshotAndReplace">
+                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerGoldGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                                                     From="4" To="22" Duration="0:0:0.8"/>
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerGoldGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                                                     From="0.3" To="0.95" Duration="0:0:0.8"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="TriggerExecutingSB"/>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+
+                                    <!-- Success: золотая вспышка, однократно -->
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
+                                        <Setter TargetName="TriggerGoldGlowBorder" Property="Visibility" Value="Visible"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="TriggerSuccessSB" HandoffBehavior="SnapshotAndReplace">
+                                                <Storyboard FillBehavior="Stop">
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerGoldGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                                                     From="28" To="4" Duration="0:0:0.5"/>
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerGoldGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                                                     From="1.0" To="0.0" Duration="0:0:0.5"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="TriggerSuccessSB"/>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+
+                                    <!-- Failed: рубиновое пульсирование -->
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
+                                        <Setter TargetName="TriggerRubyGlowBorder" Property="Visibility" Value="Visible"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="TriggerFailedSB" HandoffBehavior="SnapshotAndReplace">
+                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerRubyGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.BlurRadius)"
+                                                                     From="8" To="20" Duration="0:0:0.4"/>
+                                                    <DoubleAnimation Storyboard.TargetName="TriggerRubyGlowBorder"
+                                                                     Storyboard.TargetProperty="(UIElement.Effect).(DropShadowEffect.Opacity)"
+                                                                     From="0.4" To="1.0" Duration="0:0:0.4"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="TriggerFailedSB"/>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+
+                            <!-- ══ Карточка MacroPolicyNode: пассивная нода-конфигуратор ══     -->
+                            <!--   Нет входных и выходных портов. Визуально: щит + настройки.   -->
+                            <DataTemplate x:Key="NodeCardMacroPolicyTemplate" DataType="{x:Type models:VisualNode}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="14"/>
+                                        <ColumnDefinition Width="160"/>
+                                        <ColumnDefinition Width="14"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Никаких портов: колонки 0 и 2 намеренно пусты -->
+
+                                    <!-- Синеватое фоновое свечение: политика активна -->
+                                    <Border Grid.Column="1"
+                                            IsHitTestVisible="False"
+                                            CornerRadius="6"
+                                            Background="#1A5B9BD5"
+                                            BorderThickness="0">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#FF5B9BD5" BlurRadius="16" ShadowDepth="0" Opacity="0.5"/>
+                                        </Border.Effect>
+                                    </Border>
+
+                                    <!-- Тело карточки: сине-стальная граница, иконка щита -->
+                                    <Border x:Name="PolicyCardBorder"
+                                            Grid.Column="1"
+                                            Background="#FF111824"
+                                            CornerRadius="6" Padding="10,8"
+                                            Cursor="SizeAll"
+                                            Tag="{Binding DataContext,
+                                                  RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="#FF5B9BD5" BlurRadius="14" ShadowDepth="0" Opacity="0.7"/>
+                                        </Border.Effect>
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="{x:Static res:Strings.Blueprint_NodeCtxDelete}"
+                                                          Command="{Binding PlacementTarget.Tag.DeleteNodeCommand,
+                                                                    RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}"
+                                                          CommandParameter="{Binding PlacementTarget.DataContext,
+                                                                    RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}}">
+                                                    <MenuItem.Style>
+                                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                            <Setter Property="Foreground" Value="{StaticResource RubyBrush}"/>
+                                                        </Style>
+                                                    </MenuItem.Style>
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush"     Value="#FF2A3A5A"/>
+                                                <Setter Property="BorderThickness" Value="1.5"/>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#FF5B9BD5"/>
+                                                    </Trigger>
+                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                        <Setter Property="BorderBrush"     Value="#FF90C8FF"/>
+                                                        <Setter Property="BorderThickness" Value="2"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <!-- Иконка щита -->
+                                            <TextBlock Text="🛡" FontSize="14"
+                                                       HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <TextBlock Text="{Binding Name}"
+                                                       Foreground="#FF90C8FF"
+                                                       FontWeight="SemiBold" FontSize="11"
+                                                       FontFamily="Segoe UI"
+                                                       HorizontalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="ПОЛИТИКА ГРАФА"
+                                                       Foreground="#FF4A6A8A"
+                                                       FontSize="8" FontFamily="Consolas"
+                                                       HorizontalAlignment="Center"
+                                                       Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
                             </DataTemplate>
 
@@ -3410,7 +3811,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Executing: золотое пульсирование -->
-                                    <DataTrigger Binding="{Binding State}" Value="Executing">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
                                         <Setter TargetName="SeqGoldGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="SeqExecutingSB" HandoffBehavior="SnapshotAndReplace">
@@ -3429,7 +3830,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Success: золото гаснет -->
-                                    <DataTrigger Binding="{Binding State}" Value="Success">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
                                         <Setter TargetName="SeqGoldGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="SeqSuccessSB" HandoffBehavior="SnapshotAndReplace">
@@ -3448,7 +3849,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Failed: рубиновое пульсирование -->
-                                    <DataTrigger Binding="{Binding State}" Value="Failed">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
                                         <Setter TargetName="SeqRubyGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="SeqFailedSB" HandoffBehavior="SnapshotAndReplace">
@@ -3635,7 +4036,7 @@
 
                                 <DataTemplate.Triggers>
                                     <!-- Executing: золотое пульсирование -->
-                                    <DataTrigger Binding="{Binding State}" Value="Executing">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Executing">
                                         <Setter TargetName="QbExecGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="QbExecSB" HandoffBehavior="SnapshotAndReplace">
@@ -3654,7 +4055,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Success: золотое затухание -->
-                                    <DataTrigger Binding="{Binding State}" Value="Success">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Success">
                                         <Setter TargetName="QbExecGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="QbSuccessSB" HandoffBehavior="SnapshotAndReplace">
@@ -3673,7 +4074,7 @@
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
                                     <!-- Failed: рубиновое пульсирование -->
-                                    <DataTrigger Binding="{Binding State}" Value="Failed">
+                                    <DataTrigger Binding="{Binding LogicalNode.State}" Value="Failed">
                                         <Setter TargetName="QbRubyGlowBorder" Property="Visibility" Value="Visible"/>
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard x:Name="QbFailedSB" HandoffBehavior="SnapshotAndReplace">
@@ -3698,14 +4099,16 @@
                                 DefaultTemplate="{StaticResource NodeCardDefaultTemplate}"
                                 SequencerTemplate="{StaticResource NodeCardSequencerTemplate}"
                                 QueueBlockTemplate="{StaticResource NodeCardQueueBlockTemplate}"
-                                TriggerRootTemplate="{StaticResource NodeCardTriggerRootTemplate}"/>
+                                TriggerRootTemplate="{StaticResource NodeCardTriggerRootTemplate}"
+                                MacroPolicyTemplate="{StaticResource NodeCardMacroPolicyTemplate}"/>
                         </ItemsControl.Resources>
                         <ItemsControl.ItemTemplateSelector>
                             <converters:VisualNodeCardSelector
                                 DefaultTemplate="{StaticResource NodeCardDefaultTemplate}"
                                 SequencerTemplate="{StaticResource NodeCardSequencerTemplate}"
                                 QueueBlockTemplate="{StaticResource NodeCardQueueBlockTemplate}"
-                                TriggerRootTemplate="{StaticResource NodeCardTriggerRootTemplate}"/>
+                                TriggerRootTemplate="{StaticResource NodeCardTriggerRootTemplate}"
+                                MacroPolicyTemplate="{StaticResource NodeCardMacroPolicyTemplate}"/>
                         </ItemsControl.ItemTemplateSelector>
                     </ItemsControl>
 
@@ -4043,8 +4446,11 @@
 
                         <ContentControl Content="{Binding SelectedNode.LogicalNode}"/>
 
-                        <!-- Кнопки тестирования ноды и цепочки -->
-                        <Grid Margin="0,16,0,0">
+                        <!-- Кнопки тестирования ноды и цепочки — скрыты для TriggerRootNode и MacroPolicyNode -->
+                        <Grid Margin="0,16,0,0"
+                              Visibility="{Binding SelectedNode.LogicalNode.IsTestable,
+                                           Converter={StaticResource BoolToVis},
+                                           FallbackValue=Visible}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="8"/>

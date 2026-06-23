@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using System.Windows.Input;
 using ARK.UI.Core.Action;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Input;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
@@ -35,8 +36,6 @@ public partial class App : WpfApp
     private IInputService?          _inputService;
     private INetworkService?        _networkService;
     private IWindowTrackerService?  _windowTrackerService;
-    private IMacroScheduler?        _macroScheduler;
-    private IProfileService?        _profileService;
     private ISpeechTriggerService?  _speechTriggerService;
     private IOllamaBridgeService?   _ollamaBridgeService;
     private ContextMenu?           _trayContextMenu;
@@ -60,6 +59,8 @@ public partial class App : WpfApp
         TaskScheduler.UnobservedTaskException      += OnUnobservedTaskException;
 
         var services = new ServiceCollection();
+        services.AddSingleton<IDataBus,        DataBus>();
+        services.AddSingleton<IBlackBoxLogger, BlackBoxLogger>();
         services.AddSingleton<ILogService,    JsonLogService>();
         services.AddSingleton<IOverlayService, OverlayService>();
         services.AddSingleton<IVaultService,   VaultService>();
@@ -70,9 +71,8 @@ public partial class App : WpfApp
         services.AddSingleton<IVisionService,  VisionService>();
         services.AddSingleton<INetworkService,        NetworkService>();
         services.AddSingleton<IWindowTrackerService,  WindowTrackerService>();
-        services.AddSingleton<IMacroScheduler,        MacroScheduler>();
-        services.AddSingleton<IProfileService,        ProfileService>();
-        services.AddSingleton<IQueueService,          QueueService>();
+        services.AddSingleton<IStorageManager,        StorageManager>();
+        services.AddSingleton<IQueueManager,          QueueManager>();
         services.AddSingleton<IHardwareAccelerator,       HardwareAcceleratorService>();
         services.AddSingleton<IModelManager,              ModelManager>();
         services.AddSingleton<ITriggerService,            TriggerService>();
@@ -83,7 +83,10 @@ public partial class App : WpfApp
         services.AddSingleton<IObsService,              ObsService>();
         services.AddSingleton<ITwitchService,           TwitchService>();
         services.AddSingleton<IProcessWatcher,          ProcessWatcher>();
+        services.AddSingleton<IActiveDocumentRegistry,  ActiveDocumentRegistry>();
         services.AddSingleton<IStartupOrchestrator,     StartupOrchestrator>();
+        services.AddSingleton<IMacroOrchestrator,        MacroOrchestrator>();
+        services.AddSingleton<IEventMonitor,             EventMonitor>();
         services.AddSingleton<NetworkCommandDispatcher>();
         services.AddTransient<BlueprintEditorViewModel>();
         services.AddTransient<MacroExplorerViewModel>();
@@ -102,8 +105,6 @@ public partial class App : WpfApp
         _inputService         = _serviceProvider.GetRequiredService<IInputService>();
         _networkService       = _serviceProvider.GetRequiredService<INetworkService>();
         _windowTrackerService = _serviceProvider.GetRequiredService<IWindowTrackerService>();
-        _macroScheduler       = _serviceProvider.GetRequiredService<IMacroScheduler>();
-        _profileService       = _serviceProvider.GetRequiredService<IProfileService>();
         _speechTriggerService = _serviceProvider.GetRequiredService<ISpeechTriggerService>();
         _ollamaBridgeService  = _serviceProvider.GetRequiredService<IOllamaBridgeService>();
 
@@ -119,8 +120,7 @@ public partial class App : WpfApp
                 Thread.CurrentThread.CurrentUICulture = culture;
             }
 
-            await _profileService!.LoadAllProfilesAsync();
-            await _serviceProvider.GetRequiredService<IQueueService>().LoadAsync();
+            await _serviceProvider.GetRequiredService<IStorageManager>().EnsureDirectoriesAsync();
             await _logger.LogInfoAsync(nameof(App), Strings.App_Starting);
         }
         catch (Exception ex)
@@ -169,33 +169,15 @@ public partial class App : WpfApp
                 _ = nodeEngine.StartAsync(demoNode1.Id);
         };
 
-        // Фоновые службы: WindowTracker → MacroScheduler
+        // WindowTracker: отслеживание активного окна
         try
         {
-            // Подписка на смену профиля — обновляем статусную строку трея
-            _macroScheduler!.ActiveProfileChanged += (_, name) =>
-                Dispatcher.Invoke(() =>
-                {
-                    if (MiStatus is null) return;
-                    MiStatus.Header = name is not null
-                        ? $"{Strings.Tray_StatusActive} [{name}]"
-                        : Strings.Tray_StatusActive;
-                });
-
-            await _macroScheduler.StartAsync();
             await _windowTrackerService!.StartAsync();
-
-            // Профили загружены, хуки зарегистрированы — разрешаем пользовательские хоткеи.
-            // До этой точки MacroScheduler игнорирует KeyDown-события макросов.
-            _macroScheduler.EnableHotkeys();
-
-            await _logger!.LogInfoAsync(nameof(App),
-                "WindowTrackerService и MacroScheduler запущены. Хоткеи активированы.");
+            await _logger!.LogInfoAsync(nameof(App), "WindowTrackerService запущен.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _ = _logger?.LogErrorAsync(nameof(App),
-                "Ошибка запуска WindowTrackerService / MacroScheduler.", ex);
+            _ = _logger?.LogErrorAsync(nameof(App), "Ошибка запуска WindowTrackerService.", ex);
         }
 
         // Запуск локального JSON-RPC Command Center (порт 8888)
@@ -464,23 +446,10 @@ public partial class App : WpfApp
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // Гарантированный сброс всех профилей на диск перед выходом.
-        // Перекрывает незавершённые fire-and-forget сохранения из ViewModels.
-        if (_profileService is not null)
-        {
-            foreach (var profile in _profileService.Profiles.ToList())
-            {
-                try { _profileService.SaveProfileAsync(profile).GetAwaiter().GetResult(); }
-                catch { /* не блокируем выход при ошибке сохранения конкретного профиля */ }
-            }
-        }
-
         try
         {
-            _macroScheduler?.Stop();
             _windowTrackerService?.Stop();
             (_windowTrackerService as IDisposable)?.Dispose();
-            (_macroScheduler       as IDisposable)?.Dispose();
             (_networkService as IDisposable)?.Dispose();
             (_inputService   as IDisposable)?.Dispose();
             _logger?.LogInfoAsync(nameof(App), Strings.App_Exiting).GetAwaiter().GetResult();

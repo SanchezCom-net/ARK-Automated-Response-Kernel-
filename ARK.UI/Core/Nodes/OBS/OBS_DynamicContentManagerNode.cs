@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,34 +58,42 @@ public sealed class OBS_DynamicContentManagerNode : BaseNode, IObsCascadeNode
         set { if (_mediaAction != value) { _mediaAction = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(TextContent), v => TextContent = v);
-        TryApplyContextInput<string>(nameof(FilePath), v => FilePath = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) TextContent = _s;
+        }
 
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected || string.IsNullOrEmpty(SelectedSource))
         {
-            await logger.LogWarningAsync(Name, "[OBS] Динамический контент: нет подключения или не выбран источник.")
+            await NodeLogger!.LogWarningAsync(Name, "[OBS] Динамический контент: нет подключения или не выбран источник.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("OBS не подключён или источник не выбран.");
         }
 
         if (SelectedMode == ObsSceneMode.CheckActive)
-            return await ExecuteCheckActiveAsync(obs, logger, cancellationToken).ConfigureAwait(false);
+        {
+            bool ok = await ExecuteCheckActiveAsync(obs, NodeLogger!, ct).ConfigureAwait(false);
+            return ok ? NodeResult.Success(null) : NodeResult.Failure("Состояние контента не совпадает.");
+        }
 
         switch (ContentType)
         {
             case ObsContentType.Text:
-                await obs.SetInputTextAsync(SelectedSource, TextContent, cancellationToken).ConfigureAwait(false);
-                await logger.LogInfoAsync(Name,
+                await obs.SetInputTextAsync(SelectedSource, TextContent, ct).ConfigureAwait(false);
+                await NodeLogger!.LogInfoAsync(Name,
                     $"[OBS] Текст '{SelectedSource}' → '{TextContent[..Math.Min(TextContent.Length, 50)]}'")
                     .ConfigureAwait(false);
                 break;
             case ObsContentType.Image:
-                await obs.SetInputFilePathAsync(SelectedSource, FilePath, cancellationToken).ConfigureAwait(false);
-                await logger.LogInfoAsync(Name,
+                await obs.SetInputFilePathAsync(SelectedSource, FilePath, ct).ConfigureAwait(false);
+                await NodeLogger!.LogInfoAsync(Name,
                     $"[OBS] Изображение '{SelectedSource}' → '{FilePath}'").ConfigureAwait(false);
                 break;
             case ObsContentType.Media:
@@ -96,11 +105,11 @@ public sealed class OBS_DynamicContentManagerNode : BaseNode, IObsCascadeNode
                     ObsMediaAction.Restart => "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART",
                     _                       => "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_NONE"
                 };
-                await obs.TriggerMediaActionAsync(SelectedSource, action, cancellationToken).ConfigureAwait(false);
-                await logger.LogInfoAsync(Name, $"[OBS] Медиа '{SelectedSource}' → {MediaAction}").ConfigureAwait(false);
+                await obs.TriggerMediaActionAsync(SelectedSource, action, ct).ConfigureAwait(false);
+                await NodeLogger!.LogInfoAsync(Name, $"[OBS] Медиа '{SelectedSource}' → {MediaAction}").ConfigureAwait(false);
                 break;
         }
-        return true;
+        return NodeResult.Success(null);
     }
 
     private async Task<bool> ExecuteCheckActiveAsync(IObsService obs, ILogService logger, CancellationToken ct)

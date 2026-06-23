@@ -108,12 +108,59 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}"
-                                               FontWeight="SemiBold" FontSize="12"
-                                               Foreground="#FFD4AF37"/>
+                                    <!-- Строка 1: имя + бейдж статуса -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="SemiBold" FontSize="12"
+                                                   Foreground="#FFD4AF37"
+                                                   VerticalAlignment="Center"/>
+                                        <!-- Зелёный ✔ Release -->
+                                        <Border Background="#FF1A5C1A"
+                                                Width="16" Height="16"
+                                                CornerRadius="3"
+                                                Margin="7,0,0,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRelease}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="✔" FontSize="8" FontWeight="Bold"
+                                                       Foreground="#FF44FF44"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                        <!-- Оранжевый β Beta -->
+                                        <Border Background="#FFCC7700"
+                                                Width="16" Height="16"
+                                                CornerRadius="3"
+                                                Margin="7,0,0,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRelease}" Value="False">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="β" FontSize="9" FontWeight="Bold"
+                                                       Foreground="White"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <!-- Строка 2: путь -->
                                     <TextBlock Text="{Binding DisplayPath}"
                                                FontSize="10" Foreground="#FF666666"
-                                               Margin="0,2,0,0"/>
+                                               Margin="0,3,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

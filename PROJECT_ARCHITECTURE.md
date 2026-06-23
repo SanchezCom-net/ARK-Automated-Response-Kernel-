@@ -1,6 +1,6 @@
 # PROJECT_ARCHITECTURE.md — ARK (Automated Response Kernel)
 > Живой технический паспорт проекта. Синхронизируется при каждом изменении кода.
-> Дата последнего обновления: 2026-06-17 | Сборка: Debug | Ошибок: 0 | Предупреждений: 0 | Задача: TriggerRootNode — единственная точка входа графа макроса
+> Дата последнего обновления: 2026-06-22 | Сборка: Debug | Ошибок: 0 | Задача: V3 Node Migration — DataBus паттерн во всех нодах | Тесты: 19/19
 
 ---
 
@@ -58,9 +58,16 @@ ARK.UI/
 │   ├── EnumToLocalizedDescriptionConverter.cs  # Enum → локализованная строка через Strings.resx
 │   ├── HotKeyTextConverter.cs                   # Key+ModifierKeys → строка "Ctrl+Shift+V"
 │   ├── StringResourceConverter.cs               # Ключ ресурса → строка через Strings.ResourceManager
-│   └── VisualNodeCardSelector.cs                # DataTemplateSelector для карточек нод на холсте
+│   └── VisualNodeCardSelector.cs                # DataTemplateSelector: Default/Sequencer/QueueBlock/TriggerRoot/MacroPolicy[V3 NEW]
 │
 ├── Core/
+│   ├── Bus/                           # [V3 NEW] Event-Data Bus Architecture
+│   │   ├── DataBusPacket.cs           # [V3.5] sealed record Passport (SessionId, DataId, Type, Timestamp, SourceNodeId, Status, Metadata). БЕЗ Payload.
+│   │   ├── IDataBus.cs                # Set/TryGet/Get/Remove/ClearSession/SessionCount
+│   │   ├── DataBus.cs                 # ConcurrentDictionary, ключ "{SessionId}_{DataId}"
+│   │   ├── NodeResult.cs              # sealed record (IsSuccess, OutputPacket?, ErrorMessage?); Success/Failure статики
+│   │   └── SessionMismatchException.cs # Fail-Fast: (устаревает — Pre-flight теперь в BaseNode.ExecuteAsync inline)
+│   │
 │   ├── Action/
 │   │   └── ActionService.cs          # IActionService: SendInput + mouse via user32.dll
 │   │
@@ -73,6 +80,7 @@ ARK.UI/
 │   │   └── MouseButtonHookEventArgs.cs
 │   │
 │   ├── Interfaces/                   # Контракты всех singleton-сервисов (см. раздел 3)
+│   │   ├── IBlackBoxLogger.cs        # [V3 NEW] Log(nodeId, msg, ex?) + FlushAsync(ct)
 │   │   ├── IActionService.cs
 │   │   ├── IConfigService.cs         # + event System.Action? ConfigSaved
 │   │   ├── IHardwareAccelerator.cs   # [NEW] IsGpuAccelerationAvailable; IsCudaAvailable; IsDirectMlAvailable; IsRocmAvailable; PrimaryGpuName; RefreshAsync
@@ -81,7 +89,8 @@ ARK.UI/
 │   │   ├── IMacroScheduler.cs
 │   │   ├── IProcessWatcher.cs        # [NEW] RunningProcessNames; ProcessStarted/Exited; Start/Stop
 │   │   ├── IStartupOrchestrator.cs   # [NEW] IsReady; ReadyStateChanged; PhaseCompleted; RunAsync
-│   │   ├── IQueueService.cs          # CRUD регионов/папок очереди; LoadAsync/SaveAsync queues.json
+│   │   ├── IQueueManager.cs          # [V3] Управление RegionQueue per-file (queues/{id}.json)
+│   │   ├── IStorageManager.cs        # [V3+] Контракт хранения: LoadMacro/SaveMacro/GetAllMacros/GetVirtualTree/AddFolder/DeleteFolder/RenameFolder/UpdateAppFolderBinding/MoveMacroToFolder/DuplicateMacro/ImportMacro/ExportMacro
 │   │   ├── IModelManager.cs          # Оркестратор моделей (Whisper/Vosk + watchdog)
 │   │   ├── IModelWrapper.cs          # Обёртка движка распознавания (IAsyncDisposable)
 │   │   ├── INetworkService.cs
@@ -89,7 +98,6 @@ ARK.UI/
 │   │   ├── IObsService.cs
 │   │   ├── IOllamaBridgeService.cs
 │   │   ├── IOverlayService.cs
-│   │   ├── IProfileService.cs
 │   │   ├── ISpeechSynthesisService.cs
 │   │   ├── ISpeechTriggerService.cs
 │   │   ├── ITwitchService.cs
@@ -102,7 +110,12 @@ ARK.UI/
 │   │   ├── ActiveWindowInfo.cs       # HWND + ProcessName + Title
 │   │   ├── AgentCapabilities.cs      # Флаги возможностей LLM-агента (tools, vision, etc.)
 │   │   ├── AppConfig.cs              # config.json: + SpeechLanguage ("ru"/"en"), VoskModelPath
-│   │   ├── AppProfile.cs             # Профиль автоматизации (макросы + регионы)
+│   │   ├── MacroDocument.cs          # [V3] Контейнер сохранения макроса (Id + Macro + UserDefinedName)
+│   │   ├── MacroManifest.cs          # [V3] Элемент system_map.json (Id, UserDefinedName, Environment, HotkeyHash)
+│   │   ├── SystemMap.cs              # [V4] Dual-storage: Macros[] (плоский, для Scheduler) + Roots[] (VirtualTree, для UI)
+│   │   ├── VirtualTreeNode.cs        # [V4 NEW] Полиморфный узел дерева: AppFolderNode (программа+Binding) / FolderNode (категория)
+│   │   ├── ContextBinding.cs         # [V4 NEW] Привязка AppFolder к процессу (BindingType: GLOBAL/FOCUS/MANUAL)
+│   │   ├── RegionQueue.cs            # [V3] Регион очереди V3 (RegionId, Name, Entries[], ExecutionMode)
 │   │   ├── AppSettings.cs            # appsettings.json: статические настройки среды
 │   │   ├── ChatMessage.cs            # Сообщение LLM-чата (role + content)
 │   │   ├── ConnectorStep.cs          # Шаг Logic_SequenceNode (StepId + Name)
@@ -111,7 +124,7 @@ ARK.UI/
 │   │   ├── LogEntry.cs               # NDJSON-запись лога (record)
 │   │   ├── LogLevel.cs               # Info / Warning / Error
 │   │   ├── MacroEntry.cs             # Запись макроса; +RegionId: Guid? (ссылка на QueueRegion)
-│   │   ├── NodeCategory.cs           # Enum: Input / Output / Logic / OBS / Win / Vision / Web
+│   │   ├── NodeCategory.cs           # Enum: SystemAndInput/UserInterface/NetworkAndApi/VisionAndAi/OBS/WindowsSystem/ScriptsAndData/SmartLogic/GuardianLogic [V3 NEW]
 │   │   ├── NodeDropPayload.cs        # Drag-and-drop payload нод из панели
 │   │   ├── NodeState.cs              # Pending / Executing / Success / Failed
 │   │   ├── NodeTemplate.cs           # Шаблон для панели инструментов (Name + discriminator)
@@ -121,16 +134,13 @@ ARK.UI/
 │   │   ├── TtsMode.cs                # Kokoro / Piper
 │   │   ├── TwitchMessageEventArgs.cs # Username + Message
 │   │   ├── UiElementInfo.cs          # UIA: AutomationId + Name + BoundingRect
-│   │   ├── VisualConnection.cs       # Провод между нодами (SourceId → TargetId + флаги)
-│   │   ├── VisualConnectionLine.cs   # WPF-отрисовка провода (Line / BezierSegment)
+│   │   ├── VisualConnection.cs       # Провод (SourceId→TargetId; IsErrorRoute/IsDataRoute/IsCustomDataRoute[V3]/IsBlackBoxRoute[V3])
+│   │   ├── VisualConnectionLine.cs   # WPF-отрисовка: 5 типов провода; SourcePortCenter/TargetPortCenter switch; LabelText; StrokeColor
 │   │   ├── VisualFolder.cs           # Папка в MacroExplorer
 │   │   ├── ModelType.cs              # [NEW] enum { None, Whisper, Vosk }
 │   │   ├── WhisperWorkerConfig.cs    # [NEW] sealed record; JSON-сериализация для --config-b64; model_path/language/use_gpu/precision/model_type/gpu_device
 │   │   ├── AppSettings.cs            # + GpuSettings секция: ForceGpuInitialization (bool, default=false)
-│   │   ├── QueueRegion.cs            # [NEW] Регион очереди: Id, Name, ExecutionMode, Folders
-│   │   ├── QueueFolder.cs            # [NEW] Папка внутри региона: Id, Name, SubFolders (глубина=1)
-│   │   ├── QueueStore.cs             # [NEW] Корневой контейнер queues.json: ObservableCollection<QueueRegion>
-│   │   └── VisualNode.cs             # Карточка ноды на холсте (X, Y, LogicalNode)
+│   │   └── VisualNode.cs             # Карточка ноды на холсте (X,Y,LogicalNode); TriggerInPortCenter/DataInPortCenter[V3]; SuccessPortCenter/DataPortCenter/CustomDataPortCenter[V3]/ErrorPortCenter/BlackBoxPortCenter[V3]
 │   │
 │   ├── Network/
 │   │   ├── NetworkCommand.cs         # Команда сетевого протокола ARK
@@ -138,7 +148,10 @@ ARK.UI/
 │   │   └── NetworkService.cs         # INetworkService: TCP-сервер для внешних клиентов
 │   │
 │   ├── Nodes/
-│   │   ├── BaseNode.cs               # Абстрактный базовый класс; JsonPolymorphic; TryApplyContextInput<T>
+│   │   ├── BaseNode.cs               # [V3.5] AutoValidatesSession; SupportsDataType; FieldMetadataMapping; TryGetMappedMetadata; Pre-flight+Transparent Pass-through в ExecuteAsync; Watchdog; LastOutputValue←DataBus
+│   │   ├── MacroPolicyNode.cs        # [V3 NEW] Passive Configurator (IsPassive=true); ConflictStrategy enum; SystemImmunity/MonopolyMode/PriorityLevel/Strategy
+│   │   ├── MacroResetNode.cs         # [V3 NEW] Генерирует DataBusPacket.Reset → движок вызывает ResetToDefault() всем нодам
+│   │   ├── Logic_SynchronizerNode.cs # [V3 NEW] SynchronizerMode{Accumulator/Timer}; AllowCrossSession; ConcurrentDictionary accumulator; LogToBlackBox
 │   │   ├── Clipboard_NodeEnums.cs    # ClipboardActionType, ClipboardDataType
 │   │   ├── ClipboardNode.cs          # Чтение/запись буфера обмена; DataPacket; 5×50мс retry
 │   │   ├── ColorSearchNode.cs        # Поиск цвета на экране через GetPixel (gdi32)
@@ -199,13 +212,12 @@ ARK.UI/
 │   │   ├── LogHighlightConverter.cs    # Раскраска строк лога по уровню
 │   │   ├── LogInlinesBehavior.cs       # Attached behavior: рендер лога с URL-гиперссылками
 │   │   ├── LogsDocumentBehavior.cs     # Attached behavior: синхронизация скролла лог-терминала
-│   │   ├── MacroScheduler.cs           # IMacroScheduler: планировщик; +IProcessWatcher(ProcessStarted авто-активация); двухпутевой поиск
+│   │   ├── MacroScheduler.cs           # [V3] IMacroScheduler: _cachedMacros[]+_regionCache via RefreshMacroCacheAsync; итерация без профилей
 │   │   ├── ProcessWatcher.cs           # [NEW] IProcessWatcher: poll каждые 2 сек, diff-события ProcessStarted/Exited
 │   │   ├── StartupOrchestrator.cs      # IStartupOrchestrator: фазы GPU→Speech→MacroIndex→Processes; Phase_GpuAsync: CudaDiagnostics + WaitForCudaAsync(4,1000ms)
 │   │   ├── CudaDiagnostics.cs          # nvidia-smi аудит; LocateCudaRuntime (AppDir→PATH→NVIDIA Toolkit C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*\bin→System32/SysWOW64); CudaProbeResult.CudaRuntimeDllPath+SearchedPaths[]; LogError с полной инструкцией при отсутствии cudart64_*.dll
-│   │   ├── QueueService.cs             # IQueueService: queues.json CRUD; SemaphoreSlim(1,1); static FindFolder
 │   │   ├── MarqueeBehavior.cs          # Attached behavior: прокрутка TextBlock при overflow
-│   │   ├── NodeEngine.cs               # INodeEngine: Fork/Join граф выполнения нод
+│   │   ├── NodeEngine.cs               # [V3.5] INodeEngine: Fork/Join граф; без Reflection; Watchdog→NodeState.Zombie
 │   │   ├── ObsService.cs               # IObsService: WebSocket клиент obs-websocket v5
 │   │   ├── ObsService.Query.cs         # IObsService partial: каскадные запросы (scenes/inputs/filters)
 │   │   ├── OllamaBridgeService.cs      # IOllamaBridgeService: streaming LLM через HTTP SSE
@@ -214,7 +226,8 @@ ARK.UI/
 │   │   ├── PasswordBehavior.cs         # Attached behavior: синхронизация PasswordBox ↔ ViewModel
 │   │   ├── PasswordEyeIconConverter.cs # Конвертер для иконки «глазик» (показать/скрыть пароль)
 │   │   ├── ProcessIconHelper.cs        # SHGetFileInfoW → BitmapSource иконка процесса
-│   │   ├── ProfileService.cs           # IProfileService: загрузка/сохранение профилей (JSON)
+│   │   ├── StorageManager.cs           # [V4] IStorageManager: Virtual Tree CRUD; DeepCopyWithNewNodeIds; Atomic Replace; SemaphoreSlim(1,1) дисковый лок
+│   │   ├── QueueManager.cs             # [V3] IQueueManager: per-file RegionQueue (queues/{id}.json); GetAllRegions/SaveRegion
 │   │   ├── ScrollSyncBehavior.cs       # Attached behavior: синхронизация скролла TextBox+TextBlock
 │   │   ├── SpeechSynthesisService.cs   # ISpeechSynthesisService: KokoroSharp + Piper TTS
 │   │   ├── HardwareMonitor.cs          # static legacy: DetectCuda() (используется WhisperModelWrapper)
@@ -253,21 +266,22 @@ ARK.UI/
 │   └── Scrollbars.xaml                 # Кастомный ScrollBar в Obsidian-стиле
 │
 ├── ViewModels/
-│   ├── BlueprintEditorViewModel.cs     # Холст нод: drag/drop, провода, выполнение макроса
-│   ├── DashboardViewModel.cs           # +IsReady (IStartupOrchestrator.ReadyStateChanged); спиннер пока IsReady=false
-│   ├── QueueViewModel.cs               # MVVM вкладки Очередь: RebuildTree → lazy factories; CRUD регионов/папок
-│   ├── QueueNodeViewModels.cs          # VM-узлы дерева очереди: ленивая загрузка через SetChildFactory; EnsureChildrenLoaded при expand
+│   ├── BlueprintEditorViewModel.cs     # [V3] ConnectNodes(6 params: +isCustomDataRoute,+isBlackBoxRoute)[V3]; BuildNodeTemplates +GuardianLogic 3 nodes; ExecuteDropNode +MacroPolicyNode/Logic_SynchronizerNode/MacroResetNode; LoadFromMacro; SaveCurrentAsync
+│   ├── DashboardViewModel.cs           # +IsReady; MacroOpenRequested: doc => BlueprintEditor.LoadFromMacro(doc)
+│   ├── MacroExplorerViewModel.cs       # [V4] Virtual Tree навигация (_navStack); Breadcrumbs; SelectItemCommand; Cb* (ContextBinding); Promote/Demote/Duplicate/Export/Import; MacroOpenRequested: Action<MacroDocument>
+│   ├── QueueViewModel.cs               # [V3] IQueueManager+IStorageManager; RefreshAsync загружает per-file RegionQueue; SetPriorityAsync → IQueueManager
+│   ├── QueueNodeViewModels.cs          # [V3] QueueRegionNodeVm(RegionQueue); QueueMacroRefNodeVm(Entry+Manifest+Region); QueueFolderNodeVm удалён
 │   └── (другие ViewModels для каждой View)
 │
 └── Views/
     ├── AddMacroToQueueDialog.xaml      # Диалог fuzzy-поиска; +VirtualizingPanel.IsVirtualizing/Recycling на ListBox
     ├── AiCharacterDialog.xaml          # Диалог настройки персонажа AI
     ├── AiSettingsControl.xaml          # Вкладка настроек Ollama/AI
-    ├── BlueprintEditorControl.xaml     # Визуальный редактор нод (холст + DataTemplates всех нод)
+    ├── BlueprintEditorControl.xaml     # [V3] Редактор нод: NodeCardDefaultTemplate(2 In+5 Out); NodeCardMacroPolicyTemplate(🛡 пассивная)[V3 NEW]; NodeCardTriggerRootTemplate; VisualNodeCardSelector+MacroPolicyTemplate
     ├── CoordinatePickerWindow.xaml     # Прозрачное окно захвата координат мыши
     ├── DashboardWindow.xaml            # +Loading overlay (спиннер инициализации, скрывается при IsReady=true)
     ├── LogsTerminalControl.xaml        # Двухслойный лог-терминал
-    ├── MacroExplorerControl.xaml       # Проводник макросов с папками (без Region-управления)
+    ├── MacroExplorerControl.xaml       # [V4] Virtual Tree: AppFolder/Folder/Macro; 3 контекстных меню; Release-badge; Context Binding panel; Breadcrumbs
     ├── PriorityDialog.xaml             # [NEW] Диалог задания приоритета макроса в очереди (0–99)
     ├── QueueSettingsControl.xaml       # Вкладка Очередь: VM-дерево, контекстное меню, кнопки + Макрос / Приоритет
     ├── NetworkSettingsControl.xaml     # Настройки TCP-сервера
@@ -292,6 +306,75 @@ ARK.Voice.Worker/                      # [NEW] Изолированный хос
 ├── PipeTransport.cs                   # Client-side Named Pipes: ark-whisper-audio-/ark-whisper-ctrl-; WriteHalt()
 ├── WhisperWorkerConfig.cs             # [NEW] internal record; десериализуется из --config-b64; model_path/language/use_gpu/precision/model_type/gpu_device
 └── WhisperPipeProcessor.cs            # WhisperFactory GPU-HALT (нет CPU fallback); LogForwarder WriteLog; BuildWavStream(short[]→WAV)
+```
+
+---
+
+## 2b. BLUEPRINT EDITOR V3 — ПОРТЫ И СОЕДИНЕНИЯ
+
+### Геометрия портов (VisualNode)
+
+| Порт | Тег | Сторона | Y-смещение | Цвет |
+|---|---|---|---|---|
+| Trigger In | `In` | Левая | +27 | Золотой `#FFD4AF37` |
+| Data In | `InData` | Левая | +43 | Серебряный (stroke) |
+| Success Trigger | `Success` | Правая | +11 | Золотой |
+| Data Out | `Data` | Правая | +27 | Серебряный |
+| Custom Data Out | `CustomData` | Правая | +43 | Slate-purple `#FF7F7FBF` |
+| Error Trigger | `Error` | Правая | +59 | Ruby `#FFC0392B` |
+| Black Box Log | `BlackBox` | Правая | +75 | Slate-blue `#FF5B9BD5` |
+
+**Исключения:**
+- `TriggerRootNode` — нет входов, 1 выход "Registration Link"
+- `MacroPolicyNode` — IsPassive=true, нет портов, только карточка 🛡
+
+### Цвета и эффекты проводов (ШАГ 5+6 — V3 Wire Coloring + Glow)
+
+| Выходной порт | Флаг | Кисть | Wire Glow Effect | Цвет HEX |
+|---|---|---|---|---|
+| Success Trigger | default | `GoldBrush` | `GoldWireEffect` | #FFD4AF37 |
+| Error Trigger | `IsErrorRoute` | `RubyBrush` | `RubyWireEffect` | #FFFF3B30 |
+| Data Out | `IsDataRoute` | `SilverDataPortBrush` | `SilverWireEffect` | #FFD3D3D3 |
+| Custom Data Out | `IsCustomDataRoute` [V3] | `CustomDataWireBrush` | `CustomDataWireEffect` | #FF7F7FBF |
+| Black Box Log | `IsBlackBoxRoute` [V3] | `BlackBoxWireBrush` | `BlackBoxWireEffect` | #FF5B9BD5 |
+| Registration Link | `IsTriggerRoute` | `TriggerWireBrush` | `TriggerWireEffect` | #FF22C55E |
+| QueueBlock связь | `IsQueueLink` | `QueueWireBrush` | `QueueWireEffect` | #FF10B981 |
+
+Wire hover (EventTrigger Path.MouseEnter): StrokeThickness 2→3.5, BlurRadius→18, Opacity→0.9 (за 100 мс).
+
+### Карточка ноды (ШАГ 6 — Bottom Strip Layout)
+
+```
+┌──────────────────────────────┐
+│ ● In   [  CardBody  ] ● Succ │  Row 0: основная зона (≈49px)
+│ ● InD              ● Data    │
+│                  ● Custom    │
+├──────────────────────────────┤  BorderThickness="0,1,0,0"
+│    ● ERR    |    ● LOG       │  Row 1: нижний стрип (≈26px)
+└──────────────────────────────┘
+```
+
+- CardBorder CornerRadius: `"6,6,0,0"` (плоские нижние углы)
+- Bottom strip: `Background="#FF161616"`, `CornerRadius="0,0,6,6"`
+- ErrorPortCenter: `(X+38, Y+62)` | BlackBoxPortCenter: `(X+132, Y+62)`
+
+### Правила соединений (V3 Connection Filtering)
+
+```
+Signal-провод (из Success/Error):  снэппится только к тегу "In"
+Data-провод (из Data/Custom/BB):   снэппится только к тегу "InData"
+Из входа "In":    снэппится только к "Success" или "Error"
+Из входа "InData": снэппится только к "Data", "CustomData" или "BlackBox"
+MacroPolicyNode:  CanConnect() → false с обеих сторон
+```
+
+### VisualConnection флаги маршрута
+
+```csharp
+bool IsErrorRoute      // Success(false) vs Error(true)  — Signal
+bool IsDataRoute       // канал данных (Data Out)        — Data
+bool IsCustomDataRoute // канал кастомных данных         — Data [V3 NEW]
+bool IsBlackBoxRoute   // канал диагностики              — Data [V3 NEW]
 ```
 
 ---

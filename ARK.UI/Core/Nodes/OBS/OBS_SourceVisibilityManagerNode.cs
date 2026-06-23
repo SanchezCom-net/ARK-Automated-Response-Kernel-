@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,15 +49,17 @@ public sealed class OBS_SourceVisibilityManagerNode : BaseNode, IObsCascadeNode
         set { if (_visibilityAction != value) { _visibilityAction = value; OnPropertyChanged(); } }
     }
 
-    protected override Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected)
-            return Task.FromResult(false);
-        return TargetType == ObsVisibilityTarget.Source
-            ? ExecuteSourceAsync(obs, logger, cancellationToken)
-            : ExecuteFilterAsync(obs, logger, cancellationToken);
+            return NodeResult.Failure("OBS не подключён.");
+        bool ok = TargetType == ObsVisibilityTarget.Source
+            ? await ExecuteSourceAsync(obs, NodeLogger!, ct).ConfigureAwait(false)
+            : await ExecuteFilterAsync(obs, NodeLogger!, ct).ConfigureAwait(false);
+        return ok ? NodeResult.Success(null) : NodeResult.Failure("Операция OBS видимости не выполнена.");
     }
 
     private async Task<bool> ExecuteSourceAsync(IObsService obs, ILogService logger, CancellationToken ct)

@@ -1,7 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -32,17 +32,21 @@ public sealed class Win_TranslateNode : BaseNode
         set { if (_translatedText != value) { _translatedText = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(SourceText), v => SourceText = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) SourceText = _s;
+        }
 
         if (string.IsNullOrWhiteSpace(SourceText))
         {
-            await logger.LogInfoAsync(Name, "[ПЕРЕВОД] Исходный текст пуст — нода пропущена.").ConfigureAwait(false);
-            return true;
+            await NodeLogger!.LogInfoAsync(Name, "[ПЕРЕВОД] Исходный текст пуст — нода пропущена.").ConfigureAwait(false);
+            return NodeResult.Success(null);
         }
 
         string url = $"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={TargetLanguageCode}&dt=t&q={Uri.EscapeDataString(SourceText)}";
@@ -50,13 +54,13 @@ public sealed class Win_TranslateNode : BaseNode
         string responseJson;
         try
         {
-            responseJson = await Task.Run(() => _http.GetStringAsync(url, cancellationToken), cancellationToken)
+            responseJson = await Task.Run(() => _http.GetStringAsync(url, ct), ct)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            await logger.LogErrorAsync(Name, "[ПЕРЕВОД] Ошибка обращения к Google Translate API.", ex).ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, "[ПЕРЕВОД] Ошибка обращения к Google Translate API.", ex).ConfigureAwait(false);
+            return NodeResult.Failure($"Ошибка сети: {ex.Message}");
         }
 
         try
@@ -77,22 +81,26 @@ public sealed class Win_TranslateNode : BaseNode
                     }
 
                     string translated = sb.ToString();
-                    TranslatedText   = translated;
-                    LastOutputValue  = translated;
+                    TranslatedText  = translated;
+                    LastOutputValue = translated;
 
-                    await logger.LogInfoAsync(Name, $"[ПЕРЕВОД] → «{TargetLanguageCode}» ({translated.Length} симв.).")
+                    await NodeLogger!.LogInfoAsync(Name, $"[ПЕРЕВОД] → «{TargetLanguageCode}» ({translated.Length} симв.).")
                         .ConfigureAwait(false);
-                    return true;
+
+                    var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+                    var _out = DataBusPacket.Text(_sid);
+                    DataBus?.Set(_out.SessionId, _out.DataId, translated);
+                    return NodeResult.Success(_out);
                 }
             }
         }
         catch (Exception ex)
         {
-            await logger.LogErrorAsync(Name, "[ПЕРЕВОД] Ошибка парсинга ответа Google Translate.", ex).ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, "[ПЕРЕВОД] Ошибка парсинга ответа Google Translate.", ex).ConfigureAwait(false);
+            return NodeResult.Failure($"Ошибка парсинга: {ex.Message}");
         }
 
-        await logger.LogErrorAsync(Name, "[ПЕРЕВОД] Неожиданная структура ответа Google Translate.").ConfigureAwait(false);
-        return false;
+        await NodeLogger!.LogErrorAsync(Name, "[ПЕРЕВОД] Неожиданная структура ответа Google Translate.").ConfigureAwait(false);
+        return NodeResult.Failure("Неожиданная структура ответа.");
     }
 }

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Models;
 using ARK.UI.Core.Services;
 
@@ -41,25 +41,27 @@ public sealed class RunProcessNode : BaseNode
 
     // ── Выполнение ────────────────────────────────────────────────────────
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[ЛОНЧЕР] Запуск. Цель: «{FilePathOrUrl}»");
 
-        // ── Input: путь и аргументы по серебряному проводу ───────────────
-        TryApplyContextInput<string>(nameof(FilePathOrUrl), v => FilePathOrUrl = v);
-        TryApplyContextInput<string>(nameof(Arguments),     v => Arguments = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) FilePathOrUrl = _s;
+        }
 
         // ── Guard: пустой путь — безопасный выход ─────────────────────────
         if (string.IsNullOrWhiteSpace(FilePathOrUrl))
         {
             DebugSink?.Invoke("[ЛОНЧЕР] Путь не задан — пропуск.");
-            await logger.LogWarningAsync(Name,
+            await NodeLogger!.LogWarningAsync(Name,
                 "[ЛОНЧЕР] Путь к приложению или веб-ссылка не заданы. Пропуск выполнения.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("Путь не задан.");
         }
 
         string launchTarget = FilePathOrUrl;
@@ -75,7 +77,7 @@ public sealed class RunProcessNode : BaseNode
         if (!isUrl && !isExecutable && !string.IsNullOrEmpty(ext))
         {
             string? associatedExe = await Task.Run(
-                () => GetAssociatedExecutable(ext), cancellationToken).ConfigureAwait(false);
+                () => GetAssociatedExecutable(ext), ct).ConfigureAwait(false);
 
             if (!string.IsNullOrEmpty(associatedExe))
             {
@@ -85,7 +87,7 @@ public sealed class RunProcessNode : BaseNode
                     : $"\"{FilePathOrUrl}\" {Arguments}";
 
                 DebugSink?.Invoke($"[ЛОНЧЕР] Ассоциированная программа: «{associatedExe}»");
-                await logger.LogInfoAsync(Name,
+                await NodeLogger!.LogInfoAsync(Name,
                     $"[ЛОНЧЕР] Файл '{FilePathOrUrl}' открывается через '{associatedExe}'.")
                     .ConfigureAwait(false);
             }
@@ -116,7 +118,7 @@ public sealed class RunProcessNode : BaseNode
                 {
                     DebugSink?.Invoke($"[ЛОНЧЕР] ОШИБКА: {ex.Message}");
                 }
-            }, cancellationToken).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -125,19 +127,21 @@ public sealed class RunProcessNode : BaseNode
 
         if (!launchSuccess)
         {
-            await logger.LogErrorAsync(Name,
+            await NodeLogger!.LogErrorAsync(Name,
                 $"[ЛОНЧЕР] Сбой запуска '{launchTarget}'.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure($"Сбой запуска '{launchTarget}'.");
         }
 
-        // ── Output: чистый путь к запущенному файлу/ссылке ──────────────
         LastOutputValue = new DataPacket { Type = DataType.Text, Payload = FilePathOrUrl };
-        DebugSink?.Invoke($"[ВЫХОД] DataPacket записан: «{FilePathOrUrl}»");
+        DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{FilePathOrUrl}»");
 
-        await logger.LogInfoAsync(Name, $"[ЛОНЧЕР] Запущено: '{launchTarget}' {launchArgs}".TrimEnd())
+        await NodeLogger!.LogInfoAsync(Name, $"[ЛОНЧЕР] Запущено: '{launchTarget}' {launchArgs}".TrimEnd())
             .ConfigureAwait(false);
 
-        return true;
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, FilePathOrUrl);
+        return NodeResult.Success(_out);
     }
 }

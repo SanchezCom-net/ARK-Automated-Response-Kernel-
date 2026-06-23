@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,18 +9,17 @@ public sealed class NetworkStatusNode : BaseNode
 {
     public string StatusMessage { get; set; } = string.Empty;
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var network = serviceProvider.GetRequiredService<INetworkService>();
+        var network = NodeServices!.GetRequiredService<INetworkService>();
 
         if (!network.IsConnected)
         {
-            await logger.LogInfoAsync(Name, "WebSocket не подключён, отправка пропущена.")
+            await NodeLogger!.LogInfoAsync(Name, "WebSocket не подключён, отправка пропущена.")
                 .ConfigureAwait(false);
-            return true;
+            return NodeResult.Success(null);
         }
 
         var payload = JsonSerializer.Serialize(new
@@ -29,8 +29,8 @@ public sealed class NetworkStatusNode : BaseNode
             Status   = StatusMessage
         });
 
-        await network.SendAsync(payload, cancellationToken).ConfigureAwait(false);
-        await logger.LogInfoAsync(Name, $"Статус отправлен: {StatusMessage}").ConfigureAwait(false);
-        return true;
+        await network.SendAsync(payload, ct).ConfigureAwait(false);
+        await NodeLogger!.LogInfoAsync(Name, $"Статус отправлен: {StatusMessage}").ConfigureAwait(false);
+        return NodeResult.Success(null);
     }
 }

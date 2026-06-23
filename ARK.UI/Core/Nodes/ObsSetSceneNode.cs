@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,33 +23,31 @@ public sealed class ObsSetSceneNode : BaseNode
         set { if (_sceneName != value) { _sceneName = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected)
         {
-            await logger.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
+            await NodeLogger!.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("OBS не подключён.");
         }
 
         if (SelectedMode == ObsSceneMode.Switch)
         {
-            await obs.SetCurrentProgramSceneAsync(SceneName, cancellationToken).ConfigureAwait(false);
-            await logger.LogInfoAsync(Name, $"[OBS] Сцена успешно переключена на '{SceneName}'.")
+            await obs.SetCurrentProgramSceneAsync(SceneName, ct).ConfigureAwait(false);
+            await NodeLogger!.LogInfoAsync(Name, $"[OBS] Сцена успешно переключена на '{SceneName}'.")
                 .ConfigureAwait(false);
-            return true;
+            return NodeResult.Success(null);
         }
 
-        // CheckActive: проверяем совпадение текущей сцены — возвращаем true/false для ветвления графа
-        var current = await obs.GetCurrentSceneAsync(cancellationToken).ConfigureAwait(false);
+        var current = await obs.GetCurrentSceneAsync(ct).ConfigureAwait(false);
         var isMatch = string.Equals(current, SceneName, StringComparison.OrdinalIgnoreCase);
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[OBS] Проверка сцены '{SceneName}': {(isMatch ? "АКТИВНА" : "НЕАКТИВНА")} (Текущая: '{current}')")
             .ConfigureAwait(false);
-        return isMatch;
+        return isMatch ? NodeResult.Success(null) : NodeResult.Failure($"Сцена '{SceneName}' не активна.");
     }
 }

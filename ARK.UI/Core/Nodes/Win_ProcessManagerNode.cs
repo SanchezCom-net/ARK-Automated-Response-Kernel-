@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Models;
 
 namespace ARK.UI.Core.Nodes;
@@ -99,18 +99,24 @@ public sealed class Win_ProcessManagerNode : BaseNode
 
     // ── Выполнение ──────────────────────────────────────────────────────────
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[ПРОЦЕСС] Управление процессами [{SelectedAction}]: запуск...");
 
-        // Приём данных из серебряного провода
-        bool hasInput = TryApplyContextInput<string>(nameof(InputValue), v => InputValue = v);
+        bool _hasInput = false;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) { InputValue = _s; _hasInput = true; }
+        }
 
-        if (hasInput && !string.IsNullOrWhiteSpace(InputValue))
-            DebugSink?.Invoke($"[ВХОД] Динамический процесс по проводу: «{InputValue}»");
+        if (_hasInput && !string.IsNullOrWhiteSpace(InputValue))
+            DebugSink?.Invoke($"[ВХОД] Динамический процесс с DataBus: «{InputValue}»");
         else
-            DebugSink?.Invoke("[ВХОД] Входящих данных по серебряному проводу не обнаружено.");
+            DebugSink?.Invoke("[ВХОД] Входящих данных на DataBus нет.");
 
         // Формируем список целей
         var targets = new List<string>();
@@ -138,8 +144,8 @@ public sealed class Win_ProcessManagerNode : BaseNode
         if (targets.Count == 0)
         {
             DebugSink?.Invoke("[ПРОЦЕСС] [ОТМЕНА] Список процессов пуст.");
-            await logger.LogWarningAsync(Name, "[СИСТЕМА] ProcessManager: имя процесса не задано.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, "[СИСТЕМА] ProcessManager: имя процесса не задано.").ConfigureAwait(false);
+            return NodeResult.Failure("Имя процесса не задано.");
         }
 
         bool allSuccess = true;
@@ -154,14 +160,14 @@ public sealed class Win_ProcessManagerNode : BaseNode
                 {
                     WinProcessAction.CheckRunning => ExecuteCheckRunning(target),
                     WinProcessAction.Kill         => ExecuteKill(target),
-                    WinProcessAction.Restart      => await ExecuteRestartAsync(target, cancellationToken).ConfigureAwait(false),
+                    WinProcessAction.Restart      => await ExecuteRestartAsync(target, ct).ConfigureAwait(false),
                     _                             => false
                 };
             }
             catch (Exception ex)
             {
                 DebugSink?.Invoke($"[СИСТЕМА] [ОШИБКА] Сбой «{target}»: {ex.Message}");
-                await logger.LogErrorAsync(Name, $"[СИСТЕМА] Сбой «{target}».", ex).ConfigureAwait(false);
+                await NodeLogger!.LogErrorAsync(Name, $"[СИСТЕМА] Сбой «{target}».", ex).ConfigureAwait(false);
                 ok = false;
             }
 
@@ -169,20 +175,25 @@ public sealed class Win_ProcessManagerNode : BaseNode
             else    allSuccess = false;
         }
 
-        if (allSuccess && IsDataOutputEnabled && outputName is not null)
-        {
-            string payload = outputName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? outputName : outputName + ".exe";
-            LastOutputValue = new DataPacket { Type = DataType.Text, Payload = payload };
-            DebugSink?.Invoke($"[ВЫХОД] Записано в серебряный порт: «{payload}»");
-        }
-
         DebugSink?.Invoke($"[ПРОЦЕСС] [{SelectedAction}] завершён. Статус: {(allSuccess ? "Успех ✓" : "Ошибка ✗")}");
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[СИСТЕМА] ProcessManager [{SelectedAction}] → {(allSuccess ? "УСПЕХ" : "ОШИБКА")}")
             .ConfigureAwait(false);
 
-        return allSuccess;
+        if (!allSuccess) return NodeResult.Failure($"ProcessManager [{SelectedAction}] завершился с ошибкой.");
+
+        string _payload = outputName is not null
+            ? (outputName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? outputName : outputName + ".exe")
+            : string.Empty;
+        if (!string.IsNullOrEmpty(_payload))
+        {
+            LastOutputValue = new DataPacket { Type = DataType.Text, Payload = _payload };
+            DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{_payload}»");
+        }
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, _payload);
+        return NodeResult.Success(_out);
     }
 
     private bool ExecuteCheckRunning(string cleanName)

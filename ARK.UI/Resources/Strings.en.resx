@@ -923,6 +923,20 @@
     <value>Activate (Focus)</value>
   </data>
 
+  <!-- ── SelfCollisionStrategy enum localization ──────────────────────── -->
+  <data name="Enum_SelfCollisionStrategy_Parallel" xml:space="preserve">
+    <value>Parallel</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Drop" xml:space="preserve">
+    <value>Drop</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Queue" xml:space="preserve">
+    <value>Queue</value>
+  </data>
+  <data name="Enum_SelfCollisionStrategy_Restart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+
   <!-- ── OBS node enum localization ───────────────────────────────────── -->
   <data name="Enum_ObsSceneMode_Switch" xml:space="preserve">
     <value>Switch</value>

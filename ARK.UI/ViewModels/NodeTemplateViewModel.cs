@@ -26,6 +26,7 @@ public sealed class NodeTemplateViewModel : ViewModelBase
         NodeCategory.WindowsSystem => Strings.Toolbox_Category_WindowsSystem,
         NodeCategory.ScriptsAndData=> Strings.Toolbox_Category_ScriptsAndData,
         NodeCategory.SmartLogic    => Strings.Toolbox_Category_SmartLogic,
+        NodeCategory.GuardianLogic => Strings.Toolbox_Category_GuardianLogic,
         _                          => Category.ToString()
     };
 

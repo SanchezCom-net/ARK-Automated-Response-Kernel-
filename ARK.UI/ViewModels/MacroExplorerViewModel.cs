@@ -1,12 +1,5 @@
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -14,952 +7,624 @@ using System.Windows.Media.Imaging;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using ARK.UI.Core.Services;
-using ARK.UI.Resources;
 using ARK.UI.Views;
+using WpfApp              = System.Windows.Application;
 using WpfMessageBox       = System.Windows.MessageBox;
 using WpfMessageBoxButton = System.Windows.MessageBoxButton;
 using WpfMessageBoxImage  = System.Windows.MessageBoxImage;
-using WpfSaveFileDialog   = Microsoft.Win32.SaveFileDialog;
+using WpfMessageBoxResult = System.Windows.MessageBoxResult;
 using WpfOpenFileDialog   = Microsoft.Win32.OpenFileDialog;
+using WpfSaveFileDialog   = Microsoft.Win32.SaveFileDialog;
 
 namespace ARK.UI.ViewModels;
 
 public sealed class MacroExplorerViewModel : ViewModelBase
 {
-    private enum NavLevel { Root, InProfile, InFolder, InRegion }
+    private readonly IStorageManager _storageManager;
 
-    private static readonly JsonSerializerOptions _cloneOptions = new()
+    // ── Состояние навигации ───────────────────────────────────────────────────
+
+    private SystemMap                    _tree         = new();
+    private IReadOnlyList<MacroManifest> _allManifests = [];
+
+    // Стек навигации: (Id папки или null=Root, имя)
+    private readonly List<(Guid? FolderId, string Name)> _navStack = [];
+
+    private Guid? CurrentFolderId => _navStack.Count > 0 ? _navStack[^1].FolderId : null;
+
+    // Корневой AppFolderNode для текущей навигации (первый элемент стека)
+    private AppFolderNode? CurrentAppFolder
     {
-        PropertyNameCaseInsensitive     = true,
-        PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate
-    };
-
-    private readonly IConfigService     _configService;
-    private readonly IProfileService    _profileService;
-    private NavLevel                    _level;
-    private AppProfile?                 _currentProfile;
-    private readonly List<VisualFolder> _folderPath = new();
-    private ProfileRegion?              _currentRegion;
-    private string                      _currentPath = "Макросы";
-    private ProcessInfo?                _selectedProcess;
-    private MacroEntry?                 _copiedMacro;
-
-    private VisualFolder? CurrentFolder => _folderPath.Count > 0 ? _folderPath[^1] : null;
-
-    public event Action<AppProfile, ProfileRegion?, MacroEntry>? MacroOpenRequested;
-
-    public ObservableCollection<AppProfile>     AllProfiles        => _profileService.Profiles;
-    public ObservableCollection<ExplorerItem>   Items              { get; } = new();
-    public ObservableCollection<BreadcrumbItem> Breadcrumbs        { get; } = new();
-    public ObservableCollection<ProcessInfo>    ProcessSuggestions { get; } = new();
-
-    public string CurrentPath
-    {
-        get => _currentPath;
-        private set => SetProperty(ref _currentPath, value);
-    }
-
-    public bool IsEmpty                  => Items.Count == 0;
-    public bool IsProfileSettingsVisible => _level == NavLevel.InProfile && _currentProfile is not null;
-    public bool CanCreateProgram         => _level == NavLevel.Root;
-    public bool CanPaste                 => _copiedMacro is not null;
-
-    public ProcessInfo? SelectedProcess
-    {
-        get => _selectedProcess;
-        set
+        get
         {
-            if (ReferenceEquals(_selectedProcess, value)) return;
-            _selectedProcess = value;
-            if (_currentProfile is not null && value is not null)
-                _currentProfile.TargetProcessName = value.ProcessName;
-            OnPropertyChanged();
+            if (_navStack.Count == 0) return null;
+            var id = _navStack[0].FolderId;
+            return id.HasValue ? FindNodeById(_tree.Roots, id.Value) as AppFolderNode : null;
         }
     }
 
-    // ── Прокси к свойствам активного профиля ──────────────────────────────
+    // ── Выбранный элемент / Контекстная привязка ─────────────────────────────
 
-    public bool ProfileIsGlobal
+    private ExplorerItem?  _selectedItem;
+    private AppFolderNode? _cbFolder;
+
+    private bool   _cbIsGlobal      = true;
+    private string _cbTargetProcess = string.Empty;
+    private string _cbTitleFilter   = string.Empty;
+    private bool   _cbFocusRequired = false;
+
+    // ── Публичные свойства ────────────────────────────────────────────────────
+
+    /// <summary>Пользователь открыл макрос из проводника — загружаем в Blueprint.</summary>
+    public event Action<MacroDocument>? MacroOpenRequested;
+
+    public ObservableCollection<ExplorerItem>   Items              { get; } = [];
+    public ObservableCollection<BreadcrumbItem> Breadcrumbs        { get; } = [];
+    public ObservableCollection<ProcessInfo>    ProcessSuggestions { get; } = [];
+
+    public bool IsEmpty        => Items.Count == 0;
+    public bool IsAtRoot       => _navStack.Count == 0;
+    public bool IsInsideFolder => _navStack.Count > 0;
+
+    // Панель привязки видна только ВНУТРИ AppFolder (не при выборе на корне)
+    public bool IsContextBindingVisible => CurrentAppFolder is not null;
+
+    public bool CbIsGlobal
     {
-        get => _currentProfile?.IsGlobal ?? false;
-        set
-        {
-            if (_currentProfile is null || _currentProfile.IsGlobal == value) return;
-            _currentProfile.IsGlobal = value;
-            OnPropertyChanged();
-        }
+        get => _cbIsGlobal;
+        set { if (SetProperty(ref _cbIsGlobal, value)) OnPropertyChanged(nameof(CbIsProcessVisible)); }
     }
 
-    public string ProfileTargetProcess
+    public bool   CbIsProcessVisible => !_cbIsGlobal;
+
+    public string CbTargetProcess
     {
-        get => _currentProfile?.TargetProcessName ?? string.Empty;
-        set
-        {
-            if (_currentProfile is null || _currentProfile.TargetProcessName == value) return;
-            _currentProfile.TargetProcessName = value;
-            OnPropertyChanged();
-        }
+        get => _cbTargetProcess;
+        set => SetProperty(ref _cbTargetProcess, value);
     }
 
-    public bool ProfileFocusRequired
+    public string CbTitleFilter
     {
-        get => _currentProfile?.FocusRequired ?? true;
-        set
-        {
-            if (_currentProfile is null || _currentProfile.FocusRequired == value) return;
-            _currentProfile.FocusRequired = value;
-            OnPropertyChanged();
-        }
+        get => _cbTitleFilter;
+        set => SetProperty(ref _cbTitleFilter, value);
     }
 
-    public string ProfileWindowTitleFilter
+    public bool CbFocusRequired
     {
-        get => _currentProfile?.WindowTitleFilter ?? string.Empty;
-        set
-        {
-            if (_currentProfile is null || _currentProfile.WindowTitleFilter == value) return;
-            _currentProfile.WindowTitleFilter = value;
-            OnPropertyChanged();
-        }
+        get => _cbFocusRequired;
+        set => SetProperty(ref _cbFocusRequired, value);
     }
 
-    // ── Команды ────────────────────────────────────────────────────────────
+    // ── Команды ──────────────────────────────────────────────────────────────
 
-    public ICommand NavigateIntoCommand       { get; }
-    public ICommand NavigateBackCommand       { get; }
-    public ICommand CreateProfileCommand      { get; }
+    public ICommand CreateAppFolderCommand    { get; }
     public ICommand CreateFolderCommand       { get; }
     public ICommand CreateMacroCommand        { get; }
+    public ICommand NavigateIntoCommand       { get; }
+    public ICommand NavigateBackCommand       { get; }
+    public ICommand EditMacroCommand          { get; }
+    public ICommand PromoteCommand            { get; }
+    public ICommand DemoteCommand             { get; }
+    public ICommand DuplicateMacroCommand     { get; }
+    public ICommand ExportMacroCommand        { get; }
+    public ICommand ImportMacroCommand        { get; }
     public ICommand DeleteItemCommand         { get; }
     public ICommand RenameItemCommand         { get; }
+    public ICommand CreateSubFolderCommand    { get; }
+    public ICommand CreateMacroHereCommand    { get; }
+    public ICommand SelectItemCommand         { get; }
+    public ICommand SaveContextBindingCommand { get; }
     public ICommand LoadProcessesCommand      { get; }
-    public ICommand ToggleMacroEnabledCommand { get; }
-    public ICommand SaveProfileCommand        { get; }
-    public ICommand ExportProfileCommand      { get; }
-    public ICommand ImportProfileCommand      { get; }
-    public ICommand CopyMacroCommand          { get; }
-    public ICommand PasteMacroCommand         { get; }
-    public ICommand SetMacroPriorityCommand   { get; }
+    public ICommand RefreshCommand            { get; }
 
-    public MacroExplorerViewModel(IConfigService configService, IProfileService profileService)
+    public MacroExplorerViewModel(IStorageManager storageManager, IConfigService configService)
     {
-        _configService  = configService;
-        _profileService = profileService;
+        _storageManager = storageManager;
 
+        CreateAppFolderCommand    = new AsyncRelayCommand(async _ => await CreateAppFolderAsync(), _ => IsAtRoot);
+        CreateFolderCommand       = new AsyncRelayCommand(async _ => await CreateFolderAsync(CurrentFolderId), _ => IsInsideFolder);
+        CreateMacroCommand        = new AsyncRelayCommand(async _ => await CreateMacroAsync(CurrentFolderId), _ => IsInsideFolder);
         NavigateIntoCommand       = new RelayCommand(NavigateInto);
-        NavigateBackCommand       = new RelayCommand(_ => NavigateBack(),  _ => _level != NavLevel.Root);
-        CreateProfileCommand      = new RelayCommand(_ => CreateProfile(), _ => _level == NavLevel.Root);
-        CreateFolderCommand       = new RelayCommand(_ => CreateFolder(),  _ => _level is NavLevel.InProfile or NavLevel.InFolder);
-        // CreateRegion убрана из вкладки Макросов — управление регионами только на вкладке Очередь.
-        CreateMacroCommand        = new RelayCommand(_ => CreateMacro(),   _ => _level is NavLevel.InProfile or NavLevel.InFolder);
-        DeleteItemCommand         = new RelayCommand(DeleteItem);
-        RenameItemCommand         = new RelayCommand(RenameItem);
-        LoadProcessesCommand      = new RelayCommand(_ => _ = LoadRunningProcessesAsync());
-        ToggleMacroEnabledCommand = new RelayCommand(ToggleMacroEnabled);
-        SaveProfileCommand        = new RelayCommand(_ => SaveCurrentProfile(),
-                                                     _ => _currentProfile is not null);
-        ExportProfileCommand      = new RelayCommand(_ => ExecuteExportFromUI(),
-                                                     _ => _currentProfile is not null && _level >= NavLevel.InProfile);
-        ImportProfileCommand      = new RelayCommand(_ => ExecuteImportFromUI());
+        NavigateBackCommand       = new RelayCommand(_ => NavigateBack(), _ => _navStack.Count > 0);
+        EditMacroCommand          = new AsyncRelayCommand(EditMacroAsync,
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.Macro });
+        PromoteCommand            = new AsyncRelayCommand(PromoteAsync,
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.Macro, IsRelease: false });
+        DemoteCommand             = new AsyncRelayCommand(DemoteAsync,
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.Macro, IsRelease: true });
+        DuplicateMacroCommand     = new AsyncRelayCommand(DuplicateAsync,
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.Macro });
+        ExportMacroCommand        = new AsyncRelayCommand(ExportMacroAsync,
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.Macro });
+        ImportMacroCommand        = new AsyncRelayCommand(async _ => await ImportMacroAsync());
+        DeleteItemCommand         = new AsyncRelayCommand(DeleteItemAsync);
+        RenameItemCommand         = new AsyncRelayCommand(RenameItemAsync);
+        CreateSubFolderCommand    = new AsyncRelayCommand(
+                                        p => CreateFolderAsync(GetFolderIdFromItem(p as ExplorerItem)),
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.AppFolder or ExplorerItemKind.Folder });
+        CreateMacroHereCommand    = new AsyncRelayCommand(
+                                        p => CreateMacroAsync(GetFolderIdFromItem(p as ExplorerItem)),
+                                        p => p is ExplorerItem { Kind: ExplorerItemKind.AppFolder or ExplorerItemKind.Folder });
+        SelectItemCommand         = new RelayCommand(SelectItem);
+        SaveContextBindingCommand = new AsyncRelayCommand(async _ => await SaveContextBindingAsync());
+        LoadProcessesCommand      = new AsyncRelayCommand(async _ => await LoadProcessesAsync());
+        RefreshCommand            = new AsyncRelayCommand(async _ => await LoadAsync());
 
-        CopyMacroCommand = new RelayCommand(
-            p => CopyMacro(p),
-            p => p is ExplorerItem { Kind: ExplorerItemKind.Macro });
-
-        PasteMacroCommand = new RelayCommand(
-            _ => PasteMacro(),
-            _ => _copiedMacro is not null
-              && _level is NavLevel.InRegion or NavLevel.InProfile or NavLevel.InFolder);
-
-        SetMacroPriorityCommand = new RelayCommand(
-            p => SetMacroPriority(p),
-            p => p is ExplorerItem { Kind: ExplorerItemKind.Macro, CanSetPriority: true });
-
-        RefreshItems();
+        _ = LoadAsync();
     }
 
-    // ── Навигация ─────────────────────────────────────────────────────────
+    // ── Загрузка данных ───────────────────────────────────────────────────────
+
+    private async Task LoadAsync()
+    {
+        _tree         = await _storageManager.GetVirtualTreeAsync().ConfigureAwait(false);
+        _allManifests = await _storageManager.GetAllMacrosAsync().ConfigureAwait(false);
+        WpfApp.Current?.Dispatcher.Invoke(RefreshItems);
+    }
+
+    // ── Навигация ─────────────────────────────────────────────────────────────
 
     private void NavigateInto(object? param)
     {
         if (param is not ExplorerItem item) return;
-
-        switch (item.Kind)
+        switch (item)
         {
-            case ExplorerItemKind.Profile when item.DataObject is AppProfile profile:
-                _level           = NavLevel.InProfile;
-                _currentProfile  = profile;
-                _folderPath.Clear();
-                _selectedProcess = null;
+            case { Kind: ExplorerItemKind.AppFolder, DataObject: AppFolderNode app }:
+                _navStack.Add((app.Id, app.Name));
+                LoadContextBindingFromCurrentAppFolder();
+                RefreshItems();
+                CommandManager.InvalidateRequerySuggested();
                 break;
-
-            case ExplorerItemKind.Folder when item.DataObject is VisualFolder folder:
-                _folderPath.Add(folder);
-                _level = NavLevel.InFolder;
+            case { Kind: ExplorerItemKind.Folder, DataObject: FolderNode folder }:
+                _navStack.Add((folder.Id, folder.Name));
+                RefreshItems();
+                CommandManager.InvalidateRequerySuggested();
                 break;
-
-            case ExplorerItemKind.Region when item.DataObject is ProfileRegion region:
-                _level         = NavLevel.InRegion;
-                _currentRegion = region;
+            case { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest manifest }:
+                _ = OpenMacroAsync(manifest);
                 break;
-
-            case ExplorerItemKind.Macro when item.DataObject is ProfileRegion directRegion:
-                // Legacy: прямой регион (IsDirect=true) из старого профиля
-                if (_currentProfile is not null && directRegion.Macros.Count > 0)
-                    MacroOpenRequested?.Invoke(_currentProfile, directRegion, directRegion.Macros[0]);
-                return;
-
-            case ExplorerItemKind.Macro when item.DataObject is MacroEntry macroEntry:
-                // Новая архитектура: макрос лежит напрямую в профиле/папке
-                if (_currentProfile is not null)
-                    MacroOpenRequested?.Invoke(_currentProfile, _currentRegion, macroEntry);
-                return;
         }
-
-        RefreshItems();
-        CommandManager.InvalidateRequerySuggested();
     }
 
     private void NavigateBack()
     {
-        switch (_level)
-        {
-            case NavLevel.InRegion:
-                _currentRegion = null;
-                _level = _folderPath.Count > 0 ? NavLevel.InFolder : NavLevel.InProfile;
-                break;
-            case NavLevel.InFolder:
-                if (_folderPath.Count > 0)
-                    _folderPath.RemoveAt(_folderPath.Count - 1);
-                _level = _folderPath.Count > 0 ? NavLevel.InFolder : NavLevel.InProfile;
-                break;
-            case NavLevel.InProfile:
-                _level           = NavLevel.Root;
-                _currentProfile  = null;
-                _selectedProcess = null;
-                break;
-        }
+        if (_navStack.Count > 0) _navStack.RemoveAt(_navStack.Count - 1);
+        _selectedItem = null;
+        LoadContextBindingFromCurrentAppFolder();
         RefreshItems();
         CommandManager.InvalidateRequerySuggested();
     }
 
-    private void NavigateToRoot()
+    private void SelectItem(object? param)
     {
-        if (_level == NavLevel.Root) return;
-        _level          = NavLevel.Root;
-        _currentProfile = null;
-        _currentRegion  = null;
-        _folderPath.Clear();
-        RefreshItems();
+        _selectedItem = param as ExplorerItem;
         CommandManager.InvalidateRequerySuggested();
     }
 
-    private void NavigateToProfile()
+    // Загружает настройки привязки из корневого AppFolder текущей навигации
+    private void LoadContextBindingFromCurrentAppFolder()
     {
-        if (_level is NavLevel.Root or NavLevel.InProfile) return;
-        _folderPath.Clear();
-        _currentRegion = null;
-        _level = NavLevel.InProfile;
-        RefreshItems();
-        CommandManager.InvalidateRequerySuggested();
+        var app          = CurrentAppFolder;
+        _cbFolder        = app;
+        _cbIsGlobal      = app?.Binding.IsGlobal      ?? true;
+        _cbTargetProcess = app?.Binding.TargetProcess  ?? string.Empty;
+        _cbTitleFilter   = app?.Binding.TitleFilter    ?? string.Empty;
+        _cbFocusRequired = app?.Binding.FocusRequired  ?? false;
+        OnPropertyChanged(nameof(IsAtRoot));
+        OnPropertyChanged(nameof(IsInsideFolder));
+        OnPropertyChanged(nameof(IsContextBindingVisible));
+        OnPropertyChanged(nameof(CbIsGlobal));
+        OnPropertyChanged(nameof(CbIsProcessVisible));
+        OnPropertyChanged(nameof(CbTargetProcess));
+        OnPropertyChanged(nameof(CbTitleFilter));
+        OnPropertyChanged(nameof(CbFocusRequired));
     }
 
-    private void NavigateToFolderAt(int index)
-    {
-        if (index < 0 || index >= _folderPath.Count) return;
-        _folderPath.RemoveRange(index + 1, _folderPath.Count - index - 1);
-        _currentRegion = null;
-        _level = NavLevel.InFolder;
-        RefreshItems();
-        CommandManager.InvalidateRequerySuggested();
-    }
+    // ── Построение Items ──────────────────────────────────────────────────────
 
     private void RefreshItems()
     {
         Items.Clear();
 
-        switch (_level)
+        if (CurrentFolderId is null)
         {
-            case NavLevel.Root:
-                foreach (var p in AllProfiles)
-                {
-                    var display = p.FriendlyName.Length > 0      ? p.FriendlyName
-                                : p.TargetProcessName.Length > 0 ? p.TargetProcessName
-                                : "Безымянная программа";
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Profile, Name = display, DataObject = p });
-                }
-                break;
+            foreach (var node in _tree.Roots)
+                Items.Add(MakeTreeNodeItem(node));
 
-            case NavLevel.InProfile when _currentProfile is not null:
-                foreach (var f in _currentProfile.Folders)
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Folder, Name = f.Name, DataObject = f });
-                // Новая архитектура: макросы напрямую в профиле
-                foreach (var m in _currentProfile.Macros)
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = m,
-                                                 IsEnabled = m.IsEnabled, Priority = m.QueuePriority,
-                                                 CanSetPriority = true });
-                // Обратная совместимость: прямые (IsDirect) регионы из старых профилей
-                foreach (var r in _currentProfile.Regions.Where(r => r.IsDirect))
-                    foreach (var m in r.Macros)
-                        Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = r,
-                                                     IsEnabled = m.IsEnabled, Priority = m.QueuePriority });
-                break;
+            var categorized = CollectAllMacroIds(_tree.Roots);
+            foreach (var m in _allManifests.Where(m => !categorized.Contains(m.Id)))
+                Items.Add(MakeMacroItem(m));
+        }
+        else
+        {
+            var currentNode = FindNodeById(_tree.Roots, CurrentFolderId.Value);
+            var (children, macroIds) = currentNode switch
+            {
+                AppFolderNode app => (app.Children, app.MacroIds),
+                FolderNode f      => (f.Children,   f.MacroIds),
+                _                 => ((List<VirtualTreeNode>)[], (List<Guid>)[])
+            };
 
-            case NavLevel.InFolder when CurrentFolder is not null:
-                foreach (var f in CurrentFolder.SubFolders)
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Folder, Name = f.Name, DataObject = f });
-                // Новая архитектура: макросы напрямую в папке
-                foreach (var m in CurrentFolder.Macros)
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = m,
-                                                 IsEnabled = m.IsEnabled, Priority = m.QueuePriority,
-                                                 CanSetPriority = true });
-                // Обратная совместимость: прямые регионы из старых папок
-                foreach (var r in CurrentFolder.Regions.Where(r => r.IsDirect))
-                    foreach (var m in r.Macros)
-                        Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = r,
-                                                     IsEnabled = m.IsEnabled, Priority = m.QueuePriority });
-                break;
+            foreach (var child in children)
+                Items.Add(MakeTreeNodeItem(child));
 
-            case NavLevel.InRegion when _currentRegion is not null:
-                // Сохраняется для обратной совместимости со старыми профилями
-                foreach (var m in _currentRegion.Macros)
-                    Items.Add(new ExplorerItem { Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = m,
-                                                 IsEnabled = m.IsEnabled, Priority = m.QueuePriority,
-                                                 CanSetPriority = true });
-                break;
+            foreach (var id in macroIds)
+            {
+                var m = _allManifests.FirstOrDefault(x => x.Id == id);
+                if (m is not null) Items.Add(MakeMacroItem(m));
+            }
         }
 
         RebuildBreadcrumbs();
-        NotifyProfileSettingsChanged();
         OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(CanCreateProgram));
-
-        if (IsProfileSettingsVisible)
-            _ = LoadRunningProcessesAsync();
     }
 
-    private void NotifyProfileSettingsChanged()
+    private static ExplorerItem MakeTreeNodeItem(VirtualTreeNode node) => node switch
     {
-        OnPropertyChanged(nameof(IsProfileSettingsVisible));
-        OnPropertyChanged(nameof(ProfileIsGlobal));
-        OnPropertyChanged(nameof(ProfileTargetProcess));
-        OnPropertyChanged(nameof(ProfileFocusRequired));
-        OnPropertyChanged(nameof(ProfileWindowTitleFilter));
-        OnPropertyChanged(nameof(SelectedProcess));
-    }
+        AppFolderNode app => new() { Kind = ExplorerItemKind.AppFolder, Name = app.Name,    DataObject = app },
+        FolderNode f      => new() { Kind = ExplorerItemKind.Folder,    Name = f.Name,      DataObject = f },
+        _                 => new() { Kind = ExplorerItemKind.Folder,    Name = node.Name,   DataObject = node }
+    };
+
+    private static ExplorerItem MakeMacroItem(MacroManifest m) => new()
+    {
+        Kind = ExplorerItemKind.Macro, Name = m.Name, DataObject = m,
+        Environment = m.Environment, Priority = m.QueuePriority, CanSetPriority = true, IsEnabled = true
+    };
 
     private void RebuildBreadcrumbs()
     {
         Breadcrumbs.Clear();
         Breadcrumbs.Add(new BreadcrumbItem
         {
-            Label         = "Макросы",
-            NavigateToCmd = new RelayCommand(_ => NavigateToRoot())
+            Label = "Макросы",
+            NavigateToCmd = new RelayCommand(_ =>
+            {
+                _navStack.Clear(); _selectedItem = null;
+                LoadContextBindingFromCurrentAppFolder();
+                RefreshItems();
+                CommandManager.InvalidateRequerySuggested();
+            })
         });
-
-        if (_level >= NavLevel.InProfile && _currentProfile is not null)
+        for (int i = 0; i < _navStack.Count; i++)
         {
-            var name = _currentProfile.FriendlyName.Length > 0      ? _currentProfile.FriendlyName
-                     : _currentProfile.TargetProcessName.Length > 0 ? _currentProfile.TargetProcessName
-                     : "Безымянная программа";
+            var idx  = i;
+            var name = _navStack[i].Name;
             Breadcrumbs.Add(new BreadcrumbItem
             {
-                Label         = name,
-                NavigateToCmd = new RelayCommand(_ => NavigateToProfile())
-            });
-        }
-
-        for (int i = 0; i < _folderPath.Count; i++)
-        {
-            var capturedIndex = i;
-            Breadcrumbs.Add(new BreadcrumbItem
-            {
-                Label         = _folderPath[i].Name,
-                NavigateToCmd = new RelayCommand(_ => NavigateToFolderAt(capturedIndex))
-            });
-        }
-
-        if (_level == NavLevel.InRegion && _currentRegion is not null)
-            Breadcrumbs.Add(new BreadcrumbItem
-            {
-                Label         = _currentRegion.RegionName,
-                NavigateToCmd = new RelayCommand(_ => { })
-            });
-
-        CurrentPath = string.Join(" › ", Breadcrumbs.Select(b => b.Label));
-    }
-
-    // ── Включение / отключение макроса ────────────────────────────────────
-
-    private void ToggleMacroEnabled(object? param)
-    {
-        if (param is not ExplorerItem { Kind: ExplorerItemKind.Macro } item) return;
-
-        MacroEntry? entry = item.DataObject switch
-        {
-            MacroEntry m                                                    => m,
-            ProfileRegion { IsDirect: true } dr when dr.Macros.Count > 0  => dr.Macros[0],
-            _                                                               => null
-        };
-        if (entry is null) return;
-
-        entry.IsEnabled = !entry.IsEnabled;
-        item.IsEnabled  = entry.IsEnabled;
-
-        SaveCurrentProfile();
-    }
-
-    // ── Загрузка запущенных процессов с иконками ──────────────────────────
-
-    private async Task LoadRunningProcessesAsync()
-    {
-        // Сохраняем ДО async-части — на UI-потоке, пока значение ещё актуально.
-        string savedProcess = _currentProfile?.TargetProcessName ?? string.Empty;
-
-        var systemPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "svchost", "system", "registry", "smss", "csrss", "wininit",
-            "winlogon", "lsass", "services", "conhost", "fontdrvhost",
-            "runtimebroker", "dllhost", "sihost"
-        };
-
-        var entries = await Task.Run(() =>
-        {
-            var list = new List<(string Name, string Path)>();
-            foreach (var p in Process.GetProcesses())
-            {
-                try
+                Label = name,
+                NavigateToCmd = new RelayCommand(_ =>
                 {
-                    var name = p.ProcessName;
-                    if (systemPrefixes.Any(s => name.StartsWith(s, StringComparison.OrdinalIgnoreCase)))
-                        continue;
-
-                    string path = string.Empty;
-                    try { path = p.MainModule?.FileName ?? string.Empty; }
-                    catch { /* недостаточно прав — пропускаем путь */ }
-
-                    list.Add((name + ".exe", path));
-                }
-                catch { /* процесс завершился пока мы его читали */ }
-            }
-            return list
-                .DistinctBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }).ConfigureAwait(false);
-
-        // Извлечение иконок и обновление коллекции — строго на UI-потоке.
-        // ProcessSuggestions.Clear() может сбросить SelectedItem в ComboBox и через
-        // двусторонний Text binding затереть TargetProcessName. Поэтому ПОСЛЕ заполнения
-        // принудительно восстанавливаем выбранный процесс через SelectedProcess.
-        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-        {
-            ProcessSuggestions.Clear();
-            foreach (var (name, path) in entries)
-            {
-                var icon = string.IsNullOrEmpty(path) ? null : ExtractProcessIcon(path);
-                ProcessSuggestions.Add(new ProcessInfo(name, path, icon));
-            }
-
-            // Железное восстановление: ищем совпадение в загруженном списке.
-            // Если процесс не запущен — создаём временный ProcessInfo без иконки,
-            // чтобы имя не сбрасывалось в пустую строку.
-            var match = ProcessSuggestions.FirstOrDefault(
-                p => p.ProcessName.Equals(savedProcess, StringComparison.OrdinalIgnoreCase));
-            SelectedProcess = match ?? (string.IsNullOrEmpty(savedProcess)
-                ? null
-                : new ProcessInfo(savedProcess, string.Empty, null));
-        });
+                    while (_navStack.Count > idx + 1) _navStack.RemoveAt(_navStack.Count - 1);
+                    _selectedItem = null;
+                    LoadContextBindingFromCurrentAppFolder();
+                    RefreshItems();
+                    CommandManager.InvalidateRequerySuggested();
+                })
+            });
+        }
     }
 
-    /// <summary>Извлекает маленькую иконку (16×16) из exe-файла через SHGetFileInfoW.</summary>
-    public static BitmapSource? ExtractProcessIcon(string path)
+    // ── Открытие макроса ──────────────────────────────────────────────────────
+
+    private async Task OpenMacroAsync(MacroManifest manifest)
     {
-        if (string.IsNullOrEmpty(path)) return null;
-
-        var info = new Win32Api.SHFILEINFO();
-        var result = Win32Api.SHGetFileInfoW(
-            path, 0, ref info,
-            (uint)Marshal.SizeOf<Win32Api.SHFILEINFO>(),
-            Win32Api.SHGFI_ICON | Win32Api.SHGFI_SMALLICON);
-
-        if (result == IntPtr.Zero || info.hIcon == IntPtr.Zero) return null;
-
         try
         {
-            var bmp = Imaging.CreateBitmapSourceFromHIcon(
-                info.hIcon, Int32Rect.Empty,
-                BitmapSizeOptions.FromEmptyOptions());
+            var doc = await _storageManager.LoadMacroAsync(manifest.Id).ConfigureAwait(false);
+            WpfApp.Current?.Dispatcher.Invoke(() => MacroOpenRequested?.Invoke(doc));
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка загрузки"); }
+    }
+
+    private async Task EditMacroAsync(object? param)
+    {
+        if (param is ExplorerItem { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m })
+            await OpenMacroAsync(m).ConfigureAwait(false);
+    }
+
+    // ── CRUD ──────────────────────────────────────────────────────────────────
+
+    private async Task CreateAppFolderAsync()
+    {
+        var name = PromptName(MakeUniqueName("Новая программа"));
+        if (name is null) return;
+        try
+        {
+            await _storageManager.AddFolderAsync(name, isAppFolder: true).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) { ShowError(ex.Message, "Дубликат имени"); }
+        catch (Exception ex)                 { ShowError(ex.Message, "Ошибка создания"); }
+    }
+
+    private async Task CreateFolderAsync(Guid? parentFolderId)
+    {
+        var name = PromptName(MakeUniqueName("Новая папка"));
+        if (name is null) return;
+        try
+        {
+            await _storageManager.AddFolderAsync(name, isAppFolder: false, parentFolderId: parentFolderId)
+                .ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) { ShowError(ex.Message, "Дубликат имени"); }
+        catch (Exception ex)                 { ShowError(ex.Message, "Ошибка создания"); }
+    }
+
+    private async Task CreateMacroAsync(Guid? targetFolderId)
+    {
+        var name = PromptName(MakeUniqueName("Новый макрос"));
+        if (name is null) return;
+        if (Items.Any(it => it.Kind == ExplorerItemKind.Macro
+                         && it.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowError($"Макрос с именем «{name}» уже существует в этой папке.", "Дубликат имени");
+            return;
+        }
+        try
+        {
+            var doc = new MacroDocument { Id = Guid.NewGuid(), UserDefinedName = name, Environment = "beta" };
+            await _storageManager.SaveMacroAsync(doc).ConfigureAwait(false);
+            if (targetFolderId.HasValue)
+                await _storageManager.MoveMacroToFolderAsync(doc.Id, targetFolderId.Value).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) { ShowError(ex.Message, "Дубликат имени"); }
+        catch (Exception ex)                 { ShowError(ex.Message, "Ошибка создания"); }
+    }
+
+    private async Task DeleteItemAsync(object? param)
+    {
+        if (param is not ExplorerItem item) return;
+        bool confirmed = false;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            confirmed = WpfMessageBox.Show(
+                $"Удалить «{item.Name}»? Действие необратимо.", "Подтверждение",
+                WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question) == WpfMessageBoxResult.Yes;
+        });
+        if (!confirmed) return;
+        try
+        {
+            switch (item)
+            {
+                case { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }:
+                    await _storageManager.DeleteMacroAsync(m.Id).ConfigureAwait(false);
+                    break;
+                case { Kind: ExplorerItemKind.AppFolder or ExplorerItemKind.Folder, DataObject: VirtualTreeNode n }:
+                    await _storageManager.DeleteFolderAsync(n.Id).ConfigureAwait(false);
+                    break;
+            }
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка удаления"); }
+    }
+
+    private async Task RenameItemAsync(object? param)
+    {
+        if (param is not ExplorerItem item) return;
+        string? newName = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            var dlg = new RenameDialog(item.Name) { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) newName = dlg.ResultText;
+        });
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
+        try
+        {
+            switch (item)
+            {
+                case { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }:
+                    if (Items.Any(it => it.Kind == ExplorerItemKind.Macro
+                                     && it != item
+                                     && it.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        ShowError($"Макрос с именем «{newName}» уже существует в этой папке.", "Дубликат имени");
+                        return;
+                    }
+                    var doc = await _storageManager.LoadMacroAsync(m.Id).ConfigureAwait(false);
+                    doc.UserDefinedName = newName;
+                    await _storageManager.SaveMacroAsync(doc).ConfigureAwait(false);
+                    break;
+                case { Kind: ExplorerItemKind.AppFolder or ExplorerItemKind.Folder, DataObject: VirtualTreeNode n }:
+                    await _storageManager.RenameFolderAsync(n.Id, newName).ConfigureAwait(false);
+                    break;
+            }
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка переименования"); }
+    }
+
+    // ── Promote / Demote ──────────────────────────────────────────────────────
+
+    private async Task PromoteAsync(object? param)
+    {
+        if (param is not ExplorerItem { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }) return;
+        try { await _storageManager.PromoteToReleaseAsync(m.Id).ConfigureAwait(false); await LoadAsync().ConfigureAwait(false); }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка Promote"); }
+    }
+
+    private async Task DemoteAsync(object? param)
+    {
+        if (param is not ExplorerItem { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }) return;
+        try { await _storageManager.DemoteToBetaAsync(m.Id).ConfigureAwait(false); await LoadAsync().ConfigureAwait(false); }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка Demote"); }
+    }
+
+    // ── Дублирование ─────────────────────────────────────────────────────────
+
+    private async Task DuplicateAsync(object? param)
+    {
+        if (param is not ExplorerItem { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }) return;
+        try { await _storageManager.DuplicateMacroAsync(m.Id, CurrentFolderId).ConfigureAwait(false); await LoadAsync().ConfigureAwait(false); }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка дублирования"); }
+    }
+
+    // ── Экспорт / Импорт (.arkmacro) ─────────────────────────────────────────
+
+    private async Task ExportMacroAsync(object? param)
+    {
+        if (param is not ExplorerItem { Kind: ExplorerItemKind.Macro, DataObject: MacroManifest m }) return;
+        string? path = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            var dlg = new WpfSaveFileDialog
+                { Title = "Экспорт макроса", Filter = "ARK Macro (*.arkmacro)|*.arkmacro", FileName = m.Name, DefaultExt = ".arkmacro" };
+            if (dlg.ShowDialog() == true) path = dlg.FileName;
+        });
+        if (path is null) return;
+        try
+        {
+            await _storageManager.ExportMacroAsync(m.Id, path).ConfigureAwait(false);
+            WpfApp.Current?.Dispatcher.Invoke(() =>
+                WpfMessageBox.Show($"Экспортирован: {path}", "Экспорт", WpfMessageBoxButton.OK, WpfMessageBoxImage.Information));
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка экспорта"); }
+    }
+
+    private async Task ImportMacroAsync()
+    {
+        string? path = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            var dlg = new WpfOpenFileDialog
+                { Title = "Импорт макроса", Filter = "ARK Macro (*.arkmacro)|*.arkmacro|JSON (*.json)|*.json", DefaultExt = ".arkmacro" };
+            if (dlg.ShowDialog() == true) path = dlg.FileName;
+        });
+        if (path is null) return;
+        try
+        {
+            var doc = await _storageManager.ImportMacroAsync(path, CurrentFolderId).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+            WpfApp.Current?.Dispatcher.Invoke(() =>
+                WpfMessageBox.Show($"Импортирован: {doc.UserDefinedName}", "Импорт", WpfMessageBoxButton.OK, WpfMessageBoxImage.Information));
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка импорта"); }
+    }
+
+    // ── Панель контекстной привязки ───────────────────────────────────────────
+
+    private async Task SaveContextBindingAsync()
+    {
+        if (_cbFolder is null) return;
+        var binding = new ContextBinding
+        {
+            BindingType   = _cbIsGlobal ? "GLOBAL" : "FOCUS",
+            TargetProcess = _cbTargetProcess,
+            TitleFilter   = _cbTitleFilter,
+            FocusRequired = _cbFocusRequired
+        };
+        try
+        {
+            await _storageManager.UpdateAppFolderBindingAsync(_cbFolder.Id, binding).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError(ex.Message, "Ошибка сохранения привязки"); }
+    }
+
+    private async Task LoadProcessesAsync()
+    {
+        var list = await Task.Run(() =>
+            System.Diagnostics.Process.GetProcesses()
+                .Where(p => !string.IsNullOrEmpty(p.MainWindowTitle))
+                .Select(p => { var exe = TryGetMainModulePath(p); return new ProcessInfo(p.ProcessName, exe, ExtractProcessIcon(exe)); })
+                .OrderBy(p => p.ProcessName)
+                .ToList()).ConfigureAwait(false);
+
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            ProcessSuggestions.Clear();
+            foreach (var p in list) ProcessSuggestions.Add(p);
+        });
+    }
+
+    private static string TryGetMainModulePath(System.Diagnostics.Process p)
+    {
+        try   { return p.MainModule?.FileName ?? string.Empty; }
+        catch { return string.Empty; }
+    }
+
+    // ── Вспомогательные ──────────────────────────────────────────────────────
+
+    // Генерирует уникальное имя для текущего уровня: "База" → "База (1)" → "База (2)" ...
+    private string MakeUniqueName(string baseName)
+    {
+        var taken = Items.Select(it => it.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(baseName)) return baseName;
+        for (int i = 1; i < 1000; i++)
+        {
+            var candidate = $"{baseName} ({i})";
+            if (!taken.Contains(candidate)) return candidate;
+        }
+        return baseName; // не достижимо на практике
+    }
+
+    private string? PromptName(string defaultName)
+    {
+        string? result = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            var dlg = new RenameDialog(defaultName) { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) result = dlg.ResultText;
+        });
+        return string.IsNullOrWhiteSpace(result) ? null : result;
+    }
+
+    private static void ShowError(string msg, string title)
+        => WpfApp.Current?.Dispatcher.Invoke(() =>
+            WpfMessageBox.Show(msg, title, WpfMessageBoxButton.OK, WpfMessageBoxImage.Error));
+
+    private static Guid? GetFolderIdFromItem(ExplorerItem? item)
+        => item?.DataObject is VirtualTreeNode n ? n.Id : null;
+
+    private static VirtualTreeNode? FindNodeById(List<VirtualTreeNode> nodes, Guid id)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Id == id) return n;
+            var found = n switch
+            {
+                AppFolderNode app => FindNodeById(app.Children, id),
+                FolderNode f      => FindNodeById(f.Children, id),
+                _                 => null
+            };
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static HashSet<Guid> CollectAllMacroIds(List<VirtualTreeNode> nodes)
+    {
+        var result = new HashSet<Guid>();
+        foreach (var n in nodes)
+        {
+            switch (n)
+            {
+                case AppFolderNode app: result.UnionWith(app.MacroIds); result.UnionWith(CollectAllMacroIds(app.Children)); break;
+                case FolderNode f:      result.UnionWith(f.MacroIds);   result.UnionWith(CollectAllMacroIds(f.Children));   break;
+            }
+        }
+        return result;
+    }
+
+    // ── Иконки Shell ─────────────────────────────────────────────────────────
+
+    private static BitmapSource? ExtractProcessIcon(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        var info = new Win32Api.SHFILEINFO();
+        var hr   = Win32Api.SHGetFileInfoW(path, 0, ref info,
+            (uint)Marshal.SizeOf<Win32Api.SHFILEINFO>(),
+            Win32Api.SHGFI_ICON | Win32Api.SHGFI_SMALLICON);
+        if (hr == IntPtr.Zero || info.hIcon == IntPtr.Zero) return null;
+        try
+        {
+            var bmp = Imaging.CreateBitmapSourceFromHIcon(info.hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             bmp.Freeze();
             return bmp;
         }
-        catch
-        {
-            return null;
-        }
-        finally
-        {
-            Win32Api.DestroyIcon(info.hIcon);
-        }
-    }
-
-    // ── Валидация уникальности имён ───────────────────────────────────────
-
-    private IEnumerable<string> GetNamesInCurrentScope(object? excludeDataObject = null)
-    {
-        switch (_level)
-        {
-            case NavLevel.Root:
-                foreach (var p in AllProfiles)
-                {
-                    if (ReferenceEquals(p, excludeDataObject)) continue;
-                    yield return p.FriendlyName.Length > 0 ? p.FriendlyName : p.TargetProcessName;
-                }
-                break;
-
-            case NavLevel.InProfile when _currentProfile is not null:
-                foreach (var f in _currentProfile.Folders)
-                {
-                    if (ReferenceEquals(f, excludeDataObject)) continue;
-                    yield return f.Name;
-                }
-                foreach (var m in _currentProfile.Macros)
-                {
-                    if (ReferenceEquals(m, excludeDataObject)) continue;
-                    yield return m.Name;
-                }
-                break;
-
-            case NavLevel.InFolder when CurrentFolder is not null:
-                foreach (var f in CurrentFolder.SubFolders)
-                {
-                    if (ReferenceEquals(f, excludeDataObject)) continue;
-                    yield return f.Name;
-                }
-                foreach (var m in CurrentFolder.Macros)
-                {
-                    if (ReferenceEquals(m, excludeDataObject)) continue;
-                    yield return m.Name;
-                }
-                break;
-
-            case NavLevel.InRegion when _currentRegion is not null:
-                foreach (var m in _currentRegion.Macros)
-                {
-                    if (ReferenceEquals(m, excludeDataObject)) continue;
-                    yield return m.Name;
-                }
-                break;
-        }
-    }
-
-    private bool IsNameUniqueInCurrentScope(string name, object? excludeDataObject = null)
-        => !GetNamesInCurrentScope(excludeDataObject)
-               .Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
-
-    private static string GetUniqueNameFromSet(string baseName, HashSet<string> existing)
-    {
-        if (!existing.Contains(baseName)) return baseName;
-        for (int i = 2; ; i++)
-        {
-            var candidate = $"{baseName} ({i})";
-            if (!existing.Contains(candidate)) return candidate;
-        }
-    }
-
-    private string EnsureUniqueName(string baseName)
-        => GetUniqueNameFromSet(
-               baseName,
-               GetNamesInCurrentScope().ToHashSet(StringComparer.OrdinalIgnoreCase));
-
-    // ── Создание ─────────────────────────────────────────────────────────
-
-    private void CreateProfile()
-    {
-        var existing = AllProfiles
-            .Select(p => p.FriendlyName.Length > 0 ? p.FriendlyName : p.TargetProcessName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var profile = new AppProfile
-        {
-            FriendlyName      = GetUniqueNameFromSet("Новая программа", existing),
-            TargetProcessName = "process.exe"
-        };
-        AllProfiles.Add(profile);
-        _ = _profileService.SaveProfileAsync(profile);
-        RefreshItems();
-    }
-
-    private void CreateFolder()
-    {
-        var folder = new VisualFolder { Name = EnsureUniqueName("Новая папка") };
-        if (_level == NavLevel.InProfile && _currentProfile is not null)
-            _currentProfile.Folders.Add(folder);
-        else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-            CurrentFolder.SubFolders.Add(folder);
-        SaveCurrentProfile();
-        RefreshItems();
-    }
-
-    private void CreateRegion()
-    {
-        var region = new ProfileRegion { RegionName = EnsureUniqueName("Новый регион") };
-        if (_level == NavLevel.InProfile && _currentProfile is not null)
-            _currentProfile.Regions.Add(region);
-        else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-            CurrentFolder.Regions.Add(region);
-        SaveCurrentProfile();
-        RefreshItems();
-    }
-
-    private void CreateMacro()
-    {
-        var entry = new MacroEntry { Name = EnsureUniqueName("Новый макрос") };
-        if (_level == NavLevel.InProfile && _currentProfile is not null)
-        {
-            _currentProfile.Macros.Add(entry);
-        }
-        else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-        {
-            CurrentFolder.Macros.Add(entry);
-        }
-        else if (_level == NavLevel.InRegion && _currentRegion is not null)
-        {
-            // Обратная совместимость: если навигация попала в старый регион
-            _currentRegion.Macros.Add(entry);
-        }
-        else return;
-        SaveCurrentProfile();
-        RefreshItems();
-    }
-
-    // ── Удаление ─────────────────────────────────────────────────────────
-
-    private void DeleteItem(object? param)
-    {
-        if (param is not ExplorerItem item) return;
-
-        switch (item.Kind)
-        {
-            case ExplorerItemKind.Profile when item.DataObject is AppProfile p:
-                _ = _profileService.DeleteProfileAsync(p);
-                break;
-
-            case ExplorerItemKind.Folder when item.DataObject is VisualFolder f:
-                if (_level == NavLevel.InProfile && _currentProfile is not null)
-                    _currentProfile.Folders.Remove(f);
-                else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-                    CurrentFolder.SubFolders.Remove(f);
-                SaveCurrentProfile();
-                break;
-
-            case ExplorerItemKind.Region when item.DataObject is ProfileRegion r:
-                if (_level == NavLevel.InProfile && _currentProfile is not null)
-                    _currentProfile.Regions.Remove(r);
-                else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-                    CurrentFolder.Regions.Remove(r);
-                SaveCurrentProfile();
-                break;
-
-            case ExplorerItemKind.Macro when item.DataObject is ProfileRegion dr:
-                if (_level == NavLevel.InProfile && _currentProfile is not null)
-                    _currentProfile.Regions.Remove(dr);
-                else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-                    CurrentFolder.Regions.Remove(dr);
-                SaveCurrentProfile();
-                break;
-
-            case ExplorerItemKind.Macro when item.DataObject is MacroEntry m:
-                // Новая архитектура: ищем макрос в профиле или папке
-                if (_level == NavLevel.InProfile && _currentProfile is not null)
-                    _currentProfile.Macros.Remove(m);
-                else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-                    CurrentFolder.Macros.Remove(m);
-                else if (_currentRegion is not null)
-                    _currentRegion.Macros.Remove(m);
-                SaveCurrentProfile();
-                break;
-        }
-        RefreshItems();
-    }
-
-    // ── Переименование ────────────────────────────────────────────────────
-
-    private void RenameItem(object? param)
-    {
-        if (param is not ExplorerItem item) return;
-        var newName = ShowRenameDialog(item.Name);
-        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
-
-        if (!IsNameUniqueInCurrentScope(newName, item.DataObject))
-        {
-            WpfMessageBox.Show(
-                string.Format(Strings.Error_DuplicateNameMessage, newName),
-                Strings.Error_DuplicateNameTitle,
-                WpfMessageBoxButton.OK,
-                WpfMessageBoxImage.Warning);
-            return;
-        }
-
-        switch (item.Kind)
-        {
-            case ExplorerItemKind.Profile when item.DataObject is AppProfile p:
-                p.FriendlyName = newName;
-                _ = _profileService.SaveProfileAsync(p);
-                break;
-            case ExplorerItemKind.Folder when item.DataObject is VisualFolder f:
-                f.Name = newName;
-                SaveCurrentProfile();
-                break;
-            case ExplorerItemKind.Region when item.DataObject is ProfileRegion r:
-                r.RegionName = newName;
-                SaveCurrentProfile();
-                break;
-            case ExplorerItemKind.Macro when item.DataObject is ProfileRegion dr:
-                dr.RegionName = newName;
-                if (dr.Macros.Count > 0) dr.Macros[0].Name = newName;
-                SaveCurrentProfile();
-                break;
-            case ExplorerItemKind.Macro when item.DataObject is MacroEntry m:
-                m.Name = newName;
-                SaveCurrentProfile();
-                break;
-        }
-        RefreshItems();
-    }
-
-    private static string? ShowRenameDialog(string current)
-    {
-        var dlg = new RenameDialog(current);
-        return dlg.ShowDialog() == true ? dlg.ResultText : null;
-    }
-
-    private void SaveCurrentProfile()
-    {
-        if (_currentProfile is null) return;
-        // Фиксируем имя процесса из SelectedProcess (последнего выбора из списка)
-        // на случай если Text binding не успел обновить модель.
-        if (_selectedProcess is not null)
-            _currentProfile.TargetProcessName = _selectedProcess.ProcessName;
-        _ = _profileService.SaveProfileAsync(_currentProfile);
-    }
-
-    // ── Экспорт / Импорт профилей (.ark) ─────────────────────────────────
-
-    private void ExecuteExportFromUI()
-    {
-        if (_currentProfile is null) return;
-
-        var saveDlg = new WpfSaveFileDialog
-        {
-            Title       = Strings.Export_PasswordTitle,
-            Filter      = "Пакет ARK (*.ark)|*.ark",
-            DefaultExt  = ".ark",
-            FileName    = _currentProfile.FriendlyName.Length > 0
-                          ? _currentProfile.FriendlyName
-                          : _currentProfile.TargetProcessName
-        };
-        if (saveDlg.ShowDialog() != true) return;
-
-        var pwdDlg = new PasswordDialog(Strings.Export_PasswordTitle, Strings.Export_PasswordPrompt);
-        if (pwdDlg.ShowDialog() != true) return;
-
-        var path     = saveDlg.FileName;
-        var password = string.IsNullOrEmpty(pwdDlg.Password) ? null : pwdDlg.Password;
-        var profile  = _currentProfile;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _profileService.ExportProfileAsync(profile, path, password).ConfigureAwait(false);
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    WpfMessageBox.Show(
-                        string.Format(Strings.Export_SuccessMessage, path),
-                        Strings.Export_SuccessTitle,
-                        WpfMessageBoxButton.OK,
-                        WpfMessageBoxImage.Information));
-            }
-            catch (Exception ex)
-            {
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                    WpfMessageBox.Show(
-                        ex.Message,
-                        Strings.Error_ExportTitle,
-                        WpfMessageBoxButton.OK,
-                        WpfMessageBoxImage.Error));
-            }
-        });
-    }
-
-    private void ExecuteImportFromUI()
-    {
-        var openDlg = new WpfOpenFileDialog
-        {
-            Title      = Strings.Import_PasswordTitle,
-            Filter     = "Пакет ARK (*.ark)|*.ark",
-            DefaultExt = ".ark"
-        };
-        if (openDlg.ShowDialog() != true) return;
-
-        var path = openDlg.FileName;
-        _ = Task.Run(() => TryImportAsync(path, null));
-    }
-
-    private async Task TryImportAsync(string path, string? password)
-    {
-        try
-        {
-            var profile = await _profileService.ImportProfileAsync(path, password).ConfigureAwait(false);
-
-            await System.Windows.Application.Current!.Dispatcher.InvokeAsync(() =>
-            {
-                var existing = AllProfiles.FirstOrDefault(p => p.Id == profile.Id);
-                if (existing is not null) AllProfiles.Remove(existing);
-                AllProfiles.Add(profile);
-                RefreshItems();
-                WpfMessageBox.Show(
-                    string.Format(Strings.Import_SuccessMessage, profile.FriendlyName),
-                    Strings.Import_SuccessTitle,
-                    WpfMessageBoxButton.OK,
-                    WpfMessageBoxImage.Information);
-            });
-        }
-        catch (CryptographicException) when (password is null)
-        {
-            string? newPassword = null;
-            var cancelled = false;
-            await System.Windows.Application.Current!.Dispatcher.InvokeAsync(() =>
-            {
-                var pwdDlg = new PasswordDialog(Strings.Import_PasswordTitle, Strings.Import_PasswordPrompt);
-                if (pwdDlg.ShowDialog() != true) { cancelled = true; return; }
-                newPassword = string.IsNullOrEmpty(pwdDlg.Password) ? string.Empty : pwdDlg.Password;
-            });
-            if (!cancelled)
-                await TryImportAsync(path, newPassword ?? string.Empty).ConfigureAwait(false);
-        }
-        catch (CryptographicException)
-        {
-            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                WpfMessageBox.Show(
-                    Strings.Error_WrongPassword,
-                    Strings.Error_ImportTitle,
-                    WpfMessageBoxButton.OK,
-                    WpfMessageBoxImage.Warning));
-        }
-        catch (Exception ex)
-        {
-            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                WpfMessageBox.Show(
-                    ex.Message,
-                    Strings.Error_ImportTitle,
-                    WpfMessageBoxButton.OK,
-                    WpfMessageBoxImage.Error));
-        }
-    }
-
-    // ── Копирование / Вставка макросов ─────────────────────────────────────
-
-    private void CopyMacro(object? param)
-    {
-        MacroEntry? source = param switch
-        {
-            ExplorerItem { DataObject: MacroEntry m }                                    => m,
-            ExplorerItem { DataObject: ProfileRegion { IsDirect: true } dr }
-                when dr.Macros.Count > 0                                                  => dr.Macros[0],
-            _                                                                             => null
-        };
-        if (source is null) return;
-
-        _copiedMacro = DeepClone(source);
-        OnPropertyChanged(nameof(CanPaste));
-        CommandManager.InvalidateRequerySuggested();
-    }
-
-    private void PasteMacro()
-    {
-        if (_copiedMacro is null) return;
-
-        var clone = DeepClone(_copiedMacro);
-
-        // Авто-инкремент имени: "Имя (1)" → "Имя (2)" → ...
-        var baseName = clone.Name;
-        var counter  = 1;
-        var rxMatch  = Regex.Match(baseName, @"\((?<num>\d+)\)$");
-        if (rxMatch.Success)
-        {
-            baseName = baseName[..rxMatch.Index].TrimEnd();
-            counter  = int.Parse(rxMatch.Groups["num"].Value) + 1;
-        }
-
-        var existingNames = GetNamesInCurrentScope().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var newName       = $"{baseName} ({counter})";
-        while (existingNames.Contains(newName))
-        {
-            counter++;
-            newName = $"{baseName} ({counter})";
-        }
-        clone.Name = newName;
-
-        if (_level == NavLevel.InRegion && _currentRegion is not null)
-        {
-            _currentRegion.Macros.Add(clone);
-        }
-        else if (_level == NavLevel.InProfile && _currentProfile is not null)
-        {
-            var dr = new ProfileRegion { RegionName = clone.Name, ExecutionMode = "Concurrent", IsDirect = true };
-            dr.Macros.Add(clone);
-            _currentProfile.Regions.Add(dr);
-        }
-        else if (_level == NavLevel.InFolder && CurrentFolder is not null)
-        {
-            var dr = new ProfileRegion { RegionName = clone.Name, ExecutionMode = "Concurrent", IsDirect = true };
-            dr.Macros.Add(clone);
-            CurrentFolder.Regions.Add(dr);
-        }
-        else return;
-
-        SaveCurrentProfile();
-        RefreshItems();
-    }
-
-    // ── Задать приоритет в очереди ─────────────────────────────────────────
-
-    private void SetMacroPriority(object? param)
-    {
-        if (param is not ExplorerItem { DataObject: MacroEntry macro }) return;
-
-        var dlg = new RenameDialog(macro.QueuePriority.ToString());
-        if (dlg.ShowDialog() != true) return;
-
-        if (!int.TryParse(dlg.ResultText?.Trim(), out var priority) || priority < 0) return;
-        macro.QueuePriority = priority;
-
-        SaveCurrentProfile();
-        RefreshItems();
-    }
-
-    // ── Глубокое клонирование MacroEntry с генерацией новых GUID ──────────
-
-    private static MacroEntry DeepClone(MacroEntry source)
-    {
-        var json = JsonSerializer.Serialize(source, _cloneOptions);
-
-        // Заменяем ID самого MacroEntry и всех нод на новые GUID.
-        // NodeId == LogicalNode.Id по конструктору — одна замена покрывает
-        // NodeId, Id ноды, OnSuccessNodeId/OnErrorNodeId, StartNodeId и MacroEntry.Id.
-        var replacements = new Dictionary<string, string>
-        {
-            [source.Id.ToString()] = Guid.NewGuid().ToString()
-        };
-        foreach (var vn in source.VisualNodes)
-        {
-            if (!replacements.ContainsKey(vn.NodeId.ToString()))
-                replacements[vn.NodeId.ToString()] = Guid.NewGuid().ToString();
-        }
-
-        foreach (var (oldId, newId) in replacements)
-            json = json.Replace(oldId, newId, StringComparison.OrdinalIgnoreCase);
-
-        return JsonSerializer.Deserialize<MacroEntry>(json, _cloneOptions)!;
+        catch { return null; }
+        finally { Win32Api.DestroyIcon(info.hIcon); }
     }
 }

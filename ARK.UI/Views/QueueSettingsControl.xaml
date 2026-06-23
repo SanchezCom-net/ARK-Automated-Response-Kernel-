@@ -47,85 +47,14 @@
             </Setter>
         </Style>
 
-        <!-- ── Базовый стиль узла дерева ── -->
-        <Style x:Key="QueueTreeItemStyle" TargetType="TreeViewItem">
-            <Setter Property="Background"                   Value="Transparent"/>
-            <Setter Property="Foreground"                   Value="#FFB0A070"/>
-            <Setter Property="HorizontalContentAlignment"   Value="Stretch"/>
-            <Setter Property="Padding"                      Value="2,4"/>
-            <Setter Property="IsExpanded"                   Value="{Binding IsExpanded, Mode=TwoWay}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TreeViewItem">
-                        <StackPanel>
-                            <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
-                                    Background="{TemplateBinding Background}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ToggleButton x:Name="Expander"
-                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                                  Width="16" Background="Transparent" BorderThickness="0"
-                                                  Focusable="False">
-                                        <ToggleButton.Style>
-                                            <Style TargetType="ToggleButton">
-                                                <Setter Property="Template">
-                                                    <Setter.Value>
-                                                        <ControlTemplate TargetType="ToggleButton">
-                                                            <TextBlock x:Name="Arrow" Text="▶"
-                                                                       FontSize="8" Foreground="#FF666666"
-                                                                       VerticalAlignment="Center"
-                                                                       HorizontalAlignment="Center"/>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsChecked" Value="True">
-                                                                    <Setter TargetName="Arrow" Property="Text" Value="▼"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Setter.Value>
-                                                </Setter>
-                                            </Style>
-                                        </ToggleButton.Style>
-                                    </ToggleButton>
-                                    <ContentPresenter Grid.Column="1"
-                                                      ContentSource="Header"
-                                                      VerticalAlignment="Center"/>
-                                </Grid>
-                            </Border>
-                            <ItemsPresenter x:Name="ItemsHost"
-                                            Margin="18,0,0,0"
-                                            Visibility="Collapsed"/>
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsExpanded" Value="True">
-                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A1200"/>
-                                <Setter Property="Foreground" Value="#FFD4AF37"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF141000"/>
-                            </Trigger>
-                            <Trigger Property="HasItems" Value="False">
-                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
     </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>  <!-- Заголовок -->
+            <RowDefinition Height="Auto"/>  <!-- Тулбар -->
+            <RowDefinition Height="Auto"/>  <!-- Хлебные крошки -->
+            <RowDefinition Height="*"/>     <!-- Список -->
         </Grid.RowDefinitions>
 
         <!-- ══ Заголовок ══ -->
@@ -140,50 +69,79 @@
             </StackPanel>
         </Border>
 
-        <!-- ══ Панель инструментов ══ -->
+        <!-- ══ Панель инструментов (кнопки авто-блокируются через CanExecute) ══ -->
         <Border Grid.Row="1" Padding="10,7"
                 BorderBrush="#FF2A2A2A" BorderThickness="0,0,0,1"
                 Background="#FF0E0E0E">
             <WrapPanel Orientation="Horizontal">
+                <!-- Корневой уровень -->
                 <Button Content="＋ Регион"
                         Style="{StaticResource QueueToolbarButtonStyle}"
                         Command="{Binding AddRegionCommand}"
                         Margin="0,0,5,0"/>
-                <Button Content="＋ Папку"
-                        Style="{StaticResource QueueToolbarButtonStyle}"
-                        Command="{Binding AddFolderCommand}"
-                        Margin="0,0,5,0"/>
+                <!-- Внутри региона -->
                 <Button Content="＋ Макрос"
                         Style="{StaticResource QueueToolbarButtonStyle}"
                         Command="{Binding AddMacroCommand}"
                         Margin="0,0,5,0"/>
                 <Separator Width="1" Background="#FF3A3A3A" Margin="4,2"/>
+                <!-- Для выбранного региона (корень) -->
                 <Button Content="✎ Переименовать"
                         Style="{StaticResource QueueToolbarButtonStyle}"
-                        Command="{Binding RenameItemCommand}"
+                        Command="{Binding RenameRegionCommand}"
                         Margin="0,0,5,0"/>
-                <Button Content="✖ Убрать макрос"
+                <Button Content="🗑 Удалить регион"
                         Style="{StaticResource QueueToolbarButtonStyle}"
-                        Command="{Binding RemoveMacroCommand}"
+                        Command="{Binding DeleteRegionCommand}"
+                        Margin="0,0,5,0"/>
+                <Separator Width="1" Background="#FF3A3A3A" Margin="4,2"/>
+                <!-- Внутри региона -->
+                <Button Content="⊘ Очистить"
+                        Style="{StaticResource QueueToolbarButtonStyle}"
+                        Command="{Binding ClearRegionCommand}"
                         Margin="0,0,5,0"/>
                 <Button Content="★ Приоритет"
                         Style="{StaticResource QueueToolbarButtonStyle}"
                         Command="{Binding SetPriorityCommand}"
                         Margin="0,0,5,0"/>
-                <Button Content="🗑 Удалить"
+                <Button Content="✖ Убрать макрос"
                         Style="{StaticResource QueueToolbarButtonStyle}"
-                        Command="{Binding DeleteItemCommand}"
+                        Command="{Binding RemoveMacroCommand}"
                         Margin="0,0,5,0"/>
-                <Button Content="💾 Сохранить"
+                <Separator Width="1" Background="#FF3A3A3A" Margin="4,2"/>
+                <Button Content="⟳ Обновить"
                         Style="{StaticResource QueueToolbarButtonStyle}"
-                        Command="{Binding SaveCommand}"/>
+                        Command="{Binding RefreshCommand}"/>
             </WrapPanel>
         </Border>
 
-        <!-- ══ Дерево регионов ══ -->
-        <Grid Grid.Row="2">
+        <!-- ══ Хлебные крошки — навигация назад (видны только внутри региона) ══ -->
+        <Border Grid.Row="2" Padding="10,6"
+                BorderBrush="#FF2A2A2A" BorderThickness="0,0,0,1"
+                Background="#FF0A0A0A"
+                Visibility="{Binding IsInsideRegion, Converter={StaticResource BtV}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="← Назад"
+                        Style="{StaticResource QueueToolbarButtonStyle}"
+                        Command="{Binding NavigateBackCommand}"
+                        Padding="8,3" Margin="0,0,12,0"/>
+                <TextBlock Text="Очереди"
+                           FontSize="11" Foreground="#FF555555"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="  ›  "
+                           FontSize="11" Foreground="#FF444444"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding BreadcrumbText}"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="#FFD4AF37"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ Основной список (RegionListItemVm / MacroQueueItemVm) ══ -->
+        <Grid Grid.Row="3">
             <!-- Пустое состояние -->
-            <TextBlock Text="Нет регионов. Нажмите «＋ Регион» для создания."
+            <TextBlock Text="{Binding EmptyStateText}"
                        Foreground="#FF555555" FontSize="11"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
                        TextWrapping="Wrap" Margin="20">
@@ -191,7 +149,7 @@
                     <Style TargetType="TextBlock">
                         <Setter Property="Visibility" Value="Collapsed"/>
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding RegionNodes.Count}" Value="0">
+                            <DataTrigger Binding="{Binding DisplayItems.Count}" Value="0">
                                 <Setter Property="Visibility" Value="Visible"/>
                             </DataTrigger>
                         </Style.Triggers>
@@ -199,114 +157,235 @@
                 </TextBlock.Style>
             </TextBlock>
 
-            <TreeView Background="Transparent"
-                      BorderThickness="0"
-                      ItemsSource="{Binding RegionNodes}"
-                      ItemContainerStyle="{StaticResource QueueTreeItemStyle}"
-                      VirtualizingPanel.IsVirtualizing="True"
-                      VirtualizingPanel.VirtualizationMode="Recycling"
-                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox Background="Transparent"
+                     BorderThickness="0"
+                     ItemsSource="{Binding DisplayItems}"
+                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                     MouseDoubleClick="OnListMouseDoubleClick"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling">
 
-                <TreeView.Resources>
-                    <!-- Обработчик выбора узла -->
-                    <Style TargetType="TreeViewItem" BasedOn="{StaticResource QueueTreeItemStyle}">
-                        <EventSetter Event="Selected" Handler="OnTreeItemSelected"/>
+                <!-- ПКМ на пустом фоне: корень = Создать Регион, внутри региона = Добавить макрос -->
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="＋ Создать Регион" Click="OnCreateRegionMenuClick">
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger
+                                            Binding="{Binding PlacementTarget.DataContext.IsAtRoot,
+                                                     RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                            Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                        </MenuItem>
+                        <MenuItem Header="＋ Добавить макрос" Click="OnAddMacroContextMenuClick">
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger
+                                            Binding="{Binding PlacementTarget.DataContext.IsInsideRegion,
+                                                     RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                            Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                        </MenuItem>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+
+                <!-- Стиль строки с подсветкой выделения -->
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="#FF1E1E1E"
+                                            BorderThickness="0,0,0,1">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#FF1E1500"/>
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="#FF3A2500"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#FF111000"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
+                </ListBox.ItemContainerStyle>
+
+                <ListBox.Resources>
 
                     <!-- ── Шаблон региона ── -->
-                    <HierarchicalDataTemplate DataType="{x:Type vm:QueueRegionNodeVm}"
-                                              ItemsSource="{Binding Children}">
-                        <StackPanel Orientation="Horizontal" Margin="0,1">
-                            <TextBlock Text="📋" FontSize="12"
-                                       Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontWeight="SemiBold" FontSize="12"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </HierarchicalDataTemplate>
-
-                    <!-- ── Шаблон папки ── -->
-                    <HierarchicalDataTemplate DataType="{x:Type vm:QueueFolderNodeVm}"
-                                              ItemsSource="{Binding Children}">
-                        <StackPanel Orientation="Horizontal" Margin="0,1">
-                            <TextBlock Text="📁" FontSize="11"
-                                       Margin="0,0,5,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontSize="11" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </HierarchicalDataTemplate>
-
-                    <!-- ── Шаблон макроса (листовой узел) ── -->
-                    <DataTemplate DataType="{x:Type vm:QueueMacroRefNodeVm}">
-                        <StackPanel Orientation="Horizontal" Margin="0,1">
-                            <StackPanel.ContextMenu>
+                    <DataTemplate DataType="{x:Type vm:RegionListItemVm}">
+                        <Grid Margin="12,9">
+                            <!-- ПКМ на регионе -->
+                            <Grid.ContextMenu>
                                 <ContextMenu Tag="{Binding}">
-                                    <MenuItem Header="★ Задать приоритет..."
-                                              Click="OnSetPriorityMenuClick"/>
+                                    <MenuItem Header="→ Открыть регион"    Click="OnDrillIntoMenuClick"/>
                                     <Separator/>
-                                    <MenuItem Header="✖ Убрать из очереди"
-                                              Click="OnRemoveMacroMenuClick"/>
+                                    <MenuItem Header="✎ Переименовать"     Click="OnRenameRegionMenuClick"/>
+                                    <Separator/>
+                                    <MenuItem Header="✖ Удалить регион"     Click="OnDeleteRegionMenuClick"/>
                                 </ContextMenu>
-                            </StackPanel.ContextMenu>
+                            </Grid.ContextMenu>
 
-                            <TextBlock Text="⚡" FontSize="10"
-                                       Margin="0,0,5,0" VerticalAlignment="Center"
-                                       Foreground="#FF888855"/>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontSize="11" VerticalAlignment="Center"
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="📋" FontSize="18"
+                                       Margin="0,0,12,0" VerticalAlignment="Center"
                                        Foreground="#FFD4AF37"/>
-                            <!-- Бейдж приоритета: скрыт, если QueuePriority == 0 -->
-                            <TextBlock Text="{Binding PriorityBadge}"
-                                       FontSize="9" VerticalAlignment="Center"
-                                       Foreground="#FFCCAA44" Margin="5,0,0,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding QueuePriority}" Value="0">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontWeight="SemiBold" FontSize="12"
+                                           Foreground="#FFD4AF37"/>
+                                <TextBlock Text="{Binding MacroCountLabel}"
+                                           FontSize="10" Foreground="#FF666666"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="2" Text="›" FontSize="18"
+                                       Foreground="#FF444444" VerticalAlignment="Center"
+                                       Margin="10,0,0,0"/>
+                        </Grid>
                     </DataTemplate>
 
-                </TreeView.Resources>
-            </TreeView>
+                    <!-- ── Шаблон макроса с полным путём и бейджами ── -->
+                    <DataTemplate DataType="{x:Type vm:MacroQueueItemVm}">
+                        <Grid Margin="12,8">
+                            <!-- ПКМ на макросе -->
+                            <Grid.ContextMenu>
+                                <ContextMenu Tag="{Binding}">
+                                    <MenuItem Header="★ Задать приоритет..."  Click="OnSetPriorityMenuClick"/>
+                                    <Separator/>
+                                    <MenuItem Header="✖ Удалить из региона"   Click="OnRemoveMacroMenuClick"/>
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Иконка ⚡ -->
+                            <TextBlock Grid.Column="0" Text="⚡" FontSize="13"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       Foreground="#FF888855"/>
+
+                            <!-- Имя + путь -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}"
+                                           FontWeight="SemiBold" FontSize="12"
+                                           Foreground="#FFD4AF37"/>
+                                <TextBlock Text="{Binding LocationPath}"
+                                           FontSize="10" Foreground="#FF666666"
+                                           Margin="0,2,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasLocationPath}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- Правая колонка: бейдж приоритета + бейдж статуса -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="8,0,0,0">
+
+                                <!-- Жёлтый P: N -->
+                                <Border CornerRadius="3" Background="#FFCCAA44"
+                                        Padding="5,1" Margin="0,0,4,0"
+                                        VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasPriority}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding PriorityBadge}"
+                                               FontSize="9" FontWeight="Bold"
+                                               Foreground="#FF1A1200"/>
+                                </Border>
+
+                                <!-- Зелёный ✔ Release -->
+                                <Border Background="#FF1A5C1A"
+                                        Width="16" Height="16"
+                                        CornerRadius="3" VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRelease}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="✔" FontSize="8" FontWeight="Bold"
+                                               Foreground="#FF44FF44"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+
+                                <!-- Оранжевый β Beta -->
+                                <Border Background="#FFCC7700"
+                                        Width="16" Height="16"
+                                        CornerRadius="3" VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRelease}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="β" FontSize="9" FontWeight="Bold"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+
+                </ListBox.Resources>
+            </ListBox>
         </Grid>
 
-        <!-- ══ Панель свойств выбранного региона ══ -->
-        <Border Grid.Row="3"
-                Padding="14,10"
-                BorderBrush="#FF2A2A2A" BorderThickness="0,1,0,0"
-                Background="#FF0C0C0C"
-                Visibility="{Binding IsRegionSelected, Converter={StaticResource BtV}}">
-            <StackPanel>
-                <TextBlock Text="РЕЖИМ ВЫПОЛНЕНИЯ"
-                           FontSize="9" FontWeight="SemiBold"
-                           Foreground="#FF666666" Margin="0,0,0,6"/>
-                <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="RadioStrict"
-                                 Content="Очередь (StrictQueue)"
-                                 GroupName="ExecMode"
-                                 FontSize="11" Foreground="#FFB0A070"
-                                 Margin="0,0,16,0"
-                                 Checked="OnStrictQueueChecked"/>
-                    <RadioButton x:Name="RadioConcurrent"
-                                 Content="Параллельно (Concurrent)"
-                                 GroupName="ExecMode"
-                                 FontSize="11" Foreground="#FFB0A070"
-                                 Checked="OnConcurrentChecked"/>
-                </StackPanel>
-                <TextBlock FontSize="9" Foreground="#FF555555" Margin="0,6,0,0" TextWrapping="Wrap">
-                    <Run Text="StrictQueue"/>
-                    <Run Text=" — макросы выполняются строго по одному в порядке приоритета.  "/>
-                    <Run Text="Concurrent"/>
-                    <Run Text=" — все поступившие макросы запускаются одновременно."/>
-                </TextBlock>
-            </StackPanel>
-        </Border>
     </Grid>
 </UserControl>

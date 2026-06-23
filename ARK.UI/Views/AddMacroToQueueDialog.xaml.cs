@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using ARK.UI.Core.Models;
 using WpfKeyEventArgs         = System.Windows.Input.KeyEventArgs;
@@ -9,62 +11,50 @@ namespace ARK.UI.Views;
 
 public partial class AddMacroToQueueDialog : Window
 {
-    // ── Внутреннее представление строки списка ────────────────────────────
+    public sealed record MacroDisplayItem(string Name, string DisplayPath, string Environment, MacroManifest Manifest)
+    {
+        public bool IsRelease => Environment.Equals("release", StringComparison.OrdinalIgnoreCase);
+    }
 
-    public sealed record MacroDisplayItem(
-        string     Name,
-        string     DisplayPath,
-        MacroEntry Macro,
-        AppProfile Profile);
-
-    // ── Публичный результат ───────────────────────────────────────────────
-
-    public (MacroEntry Macro, AppProfile Profile, string Path)? SelectedMacro { get; private set; }
-
-    // ── Приватное состояние ───────────────────────────────────────────────
+    public (MacroManifest Manifest, string Path)? SelectedMacro { get; private set; }
 
     private readonly List<MacroDisplayItem> _allItems;
+    private ICollectionView?               _view;
 
-    // ── Конструктор ───────────────────────────────────────────────────────
-
-    public AddMacroToQueueDialog(
-        IEnumerable<(MacroEntry Macro, AppProfile Profile, string Path)> allMacros)
+    public AddMacroToQueueDialog(IEnumerable<(MacroManifest Manifest, string Path)> allMacros)
     {
         _allItems = allMacros
-            .Select(t => new MacroDisplayItem(t.Macro.Name, t.Path, t.Macro, t.Profile))
+            .Select(t => new MacroDisplayItem(t.Manifest.Name, t.Path, t.Manifest.Environment, t.Manifest))
             .OrderBy(i => i.Name)
             .ToList();
 
         InitializeComponent();
-        ApplyFilter(string.Empty);
+
+        // ICollectionView — live-фильтрация без пересоздания коллекции
+        var cvs = new CollectionViewSource { Source = _allItems };
+        _view = cvs.View;
+        _view.Filter = FilterMacro;
+        MacroList.ItemsSource = _view;
+
         Loaded += (_, _) => SearchBox.Focus();
     }
 
-    // ── Фильтрация по подстроке (регистронезависимо) ──────────────────────
-
-    private void ApplyFilter(string text)
+    private bool FilterMacro(object obj)
     {
-        MacroList.Items.Clear();
-        var lower = text.Trim().ToLowerInvariant();
-
-        foreach (var item in _allItems)
-        {
-            if (string.IsNullOrEmpty(lower)
-                || item.Name.Contains(lower, StringComparison.OrdinalIgnoreCase)
-                || item.DisplayPath.Contains(lower, StringComparison.OrdinalIgnoreCase))
-            {
-                MacroList.Items.Add(item);
-            }
-        }
-
-        if (MacroList.Items.Count == 1)
-            MacroList.SelectedIndex = 0;
+        if (obj is not MacroDisplayItem item) return false;
+        var text = SearchBox?.Text?.Trim();
+        if (string.IsNullOrEmpty(text)) return true;
+        return item.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || item.DisplayPath.Contains(text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── Обработчики событий ───────────────────────────────────────────────
-
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
-        => ApplyFilter(SearchBox.Text);
+    {
+        _view?.Refresh();
+        // Автовыбор если единственный результат
+        var hits = _view?.Cast<MacroDisplayItem>().Take(2).ToList();
+        MacroList.SelectedIndex = hits?.Count == 1 ? 0 : -1;
+    }
 
     private void OnTitleBarDrag(object sender, WpfMouseButtonEventArgs e)
     {
@@ -77,8 +67,7 @@ public partial class AddMacroToQueueDialog : Window
 
     private void OnListDoubleClick(object sender, WpfMouseButtonEventArgs e)
     {
-        if (MacroList.SelectedItem is MacroDisplayItem)
-            Confirm();
+        if (MacroList.SelectedItem is MacroDisplayItem) Confirm();
     }
 
     private void OnKeyDown(object sender, WpfKeyEventArgs e)
@@ -102,7 +91,7 @@ public partial class AddMacroToQueueDialog : Window
     private void Confirm()
     {
         if (MacroList.SelectedItem is not MacroDisplayItem item) return;
-        SelectedMacro = (item.Macro, item.Profile, item.DisplayPath);
+        SelectedMacro = (item.Manifest, item.DisplayPath);
         DialogResult  = true;
     }
 }

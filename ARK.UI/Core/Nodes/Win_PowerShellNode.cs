@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Models;
 
 namespace ARK.UI.Core.Nodes;
@@ -56,25 +56,31 @@ public sealed class Win_PowerShellNode : BaseNode
 
     // ── Выполнение ──────────────────────────────────────────────────────────
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         string shellName = IsPowerShell ? "PowerShell" : "CMD";
         DebugSink?.Invoke($"[{shellName}] Инициализация выполнения сценария...");
 
-        // Серебряный провод → ScriptText напрямую; зеркалим в InputValue для отображения в UI.
-        bool hasInput = TryApplyContextInput<string>(nameof(ScriptText), v => { ScriptText = v; InputValue = v; });
+        bool _hasInput = false;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) { ScriptText = _s; InputValue = _s; _hasInput = true; }
+        }
 
-        if (hasInput && !string.IsNullOrEmpty(ScriptText))
-            DebugSink?.Invoke($"[ВХОД] Сценарий получен по проводу (длина: {ScriptText.Length} симв.)");
+        if (_hasInput && !string.IsNullOrEmpty(ScriptText))
+            DebugSink?.Invoke($"[ВХОД] Сценарий получен с DataBus (длина: {ScriptText.Length} симв.)");
         else
-            DebugSink?.Invoke("[ВХОД] Входящих данных по серебряному проводу не обнаружено.");
+            DebugSink?.Invoke("[ВХОД] Входящих данных на DataBus нет.");
 
         if (string.IsNullOrWhiteSpace(ScriptText))
         {
             DebugSink?.Invoke($"[{shellName}] [ОТМЕНА] Тело сценария пусто.");
-            await logger.LogWarningAsync(Name, $"[{shellName}] Сценарий не задан.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, $"[{shellName}] Сценарий не задан.").ConfigureAwait(false);
+            return NodeResult.Failure("Сценарий не задан.");
         }
 
         // Подготовка аргументов
@@ -119,25 +125,35 @@ public sealed class Win_PowerShellNode : BaseNode
             using var process = Process.Start(psi)
                 ?? throw new InvalidOperationException("Не удалось запустить процесс.");
 
-            var readOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var readError  = process.StandardError.ReadToEndAsync(cancellationToken);
+            // Keepalive: скрипты могут работать дольше 30 сек (стандартного watchdog timeout)
+            using var kaCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _ = Task.Run(async () =>
+            {
+                while (!kaCts.IsCancellationRequested)
+                {
+                    ResetWatchdogTimer();
+                    try { await Task.Delay(5_000, kaCts.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
+                }
+            }, CancellationToken.None);
+
+            var readOutput = process.StandardOutput.ReadToEndAsync(ct);
+            var readError  = process.StandardError.ReadToEndAsync(ct);
             await Task.WhenAll(readOutput, readError).ConfigureAwait(false);
 
             output = readOutput.Result;
             error  = readError.Result;
 
-            // Ждём полного закрытия процесса в ОС — это освобождает системный OLE-буфер обмена.
-            // Без этого следующая нода (например, Буфер обмена) получит CLIPBRD_E_CANT_OPEN.
             DebugSink?.Invoke($"[СИСТЕМА] Потоки считаны. Ожидание завершения процесса {shellName}...");
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
 
             exitCode = process.ExitCode;
         }
         catch (Exception ex)
         {
             DebugSink?.Invoke($"[СИСТЕМА] [ОШИБКА] Сбой при запуске {shellName}: {ex.Message}");
-            await logger.LogErrorAsync(Name, $"[{shellName}] Сбой запуска.", ex).ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogErrorAsync(Name, $"[{shellName}] Сбой запуска.", ex).ConfigureAwait(false);
+            return NodeResult.Failure($"Сбой запуска {shellName}: {ex.Message}");
         }
 
         bool isSuccess = exitCode == 0;
@@ -181,11 +197,16 @@ public sealed class Win_PowerShellNode : BaseNode
         }
 
         DebugSink?.Invoke($"[{shellName}] Завершено. Статус: {(isSuccess ? "Успех ✓" : "Ошибка ✗")}");
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[{shellName}] Скрипт выполнен. Символов в ответе: {result.Length}, ExitCode: {exitCode}")
             .ConfigureAwait(false);
 
-        return isSuccess;
+        if (!isSuccess) return NodeResult.Failure($"ExitCode: {exitCode}");
+
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, result);
+        return NodeResult.Success(_out);
     }
 
     private static string FilterCliXml(string input)

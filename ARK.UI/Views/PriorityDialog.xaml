@@ -50,7 +50,7 @@
                 <!-- ── Пояснение ── -->
                 <TextBlock Foreground="#FF888888" FontSize="10"
                            TextWrapping="Wrap" Margin="0,0,0,10">
-                    <Run Text="Приоритет выполнения в очереди (1–99)."/>
+                    <Run Text="Приоритет выполнения в очереди (1–999)."/>
                     <LineBreak/>
                     <Run Text="1 — наивысший, выполняется первым. 0 — приоритет не задан."/>
                 </TextBlock>
@@ -59,7 +59,7 @@
                 <TextBox x:Name="PriorityBox"
                          Foreground="#FFF5D77F"
                          Margin="0,0,0,14"
-                         MaxLength="2"
+                         MaxLength="3"
                          PreviewTextInput="OnPreviewTextInput"
                          KeyDown="OnKeyDown"/>
 

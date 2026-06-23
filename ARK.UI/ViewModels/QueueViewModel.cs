@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
-using ARK.UI.Core.Services;
 using ARK.UI.Views;
 using WpfApp              = System.Windows.Application;
 using WpfMessageBox       = System.Windows.MessageBox;
@@ -14,325 +13,379 @@ namespace ARK.UI.ViewModels;
 
 public sealed class QueueViewModel : ViewModelBase
 {
-    private readonly IQueueService   _queueService;
-    private readonly IProfileService _profileService;
+    private readonly IQueueManager   _queueManager;
+    private readonly IStorageManager _storageManager;
 
-    // ── VM-дерево регионов ───────────────────────────────────────────────
-    public ObservableCollection<QueueRegionNodeVm> RegionNodes { get; } = [];
+    private Dictionary<Guid, MacroManifest> _manifestCache = new();
+    private SystemMap?                       _systemMap;
 
-    // ── Выбранные элементы ───────────────────────────────────────────────
-    private QueueRegion?         _selectedRegion;
-    private QueueFolder?         _selectedFolder;
-    private QueueMacroRefNodeVm? _selectedMacroNode;
+    // ── Данные списка ─────────────────────────────────────────────────────────
 
-    public QueueStore Store => _queueService.Store;
+    public ObservableCollection<QueueListItemVm> DisplayItems { get; } = [];
 
-    public QueueRegion? SelectedRegion
+    private QueueListItemVm? _selectedItem;
+    public QueueListItemVm? SelectedItem
     {
-        get => _selectedRegion;
+        get => _selectedItem;
         set
         {
-            if (SetProperty(ref _selectedRegion, value))
-            {
-                _selectedFolder    = null;
-                _selectedMacroNode = null;
-                OnPropertyChanged(nameof(SelectedFolder));
-                OnPropertyChanged(nameof(IsRegionSelected));
-                OnPropertyChanged(nameof(IsFolderSelected));
-                OnPropertyChanged(nameof(IsMacroSelected));
-                OnPropertyChanged(nameof(SelectedExecutionMode));
+            if (SetProperty(ref _selectedItem, value))
                 CommandManager.InvalidateRequerySuggested();
-            }
         }
     }
 
-    public QueueFolder? SelectedFolder
+    // Хелперы для CanExecute — определяют тип выбранного элемента
+    private RegionListItemVm? SelectedRegionItem => _selectedItem as RegionListItemVm;
+    private MacroQueueItemVm? SelectedMacroItem  => _selectedItem as MacroQueueItemVm;
+
+    // ── Навигация (drill-down) ────────────────────────────────────────────────
+
+    private RegionQueue? _currentRegion;
+
+    public RegionQueue? CurrentRegion  => _currentRegion;
+    public bool IsAtRoot               => _currentRegion is null;
+    public bool IsInsideRegion         => _currentRegion is not null;
+    public string BreadcrumbText       => _currentRegion?.Name ?? string.Empty;
+
+    public string EmptyStateText => IsAtRoot
+        ? "Нет регионов. Нажмите «＋ Регион» или ПКМ для создания."
+        : "Регион пуст. Нажмите «＋ Макрос» для добавления.";
+
+    private void SetCurrentRegion(RegionQueue? value)
     {
-        get => _selectedFolder;
-        set
-        {
-            if (SetProperty(ref _selectedFolder, value))
-            {
-                _selectedMacroNode = null;
-                OnPropertyChanged(nameof(IsFolderSelected));
-                OnPropertyChanged(nameof(IsMacroSelected));
-                CommandManager.InvalidateRequerySuggested();
-            }
-        }
+        _currentRegion = value;
+        OnPropertyChanged(nameof(CurrentRegion));
+        OnPropertyChanged(nameof(IsAtRoot));
+        OnPropertyChanged(nameof(IsInsideRegion));
+        OnPropertyChanged(nameof(BreadcrumbText));
+        OnPropertyChanged(nameof(EmptyStateText));
+        _selectedItem = null;
+        OnPropertyChanged(nameof(SelectedItem));
+        CommandManager.InvalidateRequerySuggested();
     }
 
-    public QueueMacroRefNodeVm? SelectedMacroNode
-    {
-        get => _selectedMacroNode;
-        set
-        {
-            if (SetProperty(ref _selectedMacroNode, value))
-            {
-                _selectedFolder = null;
-                OnPropertyChanged(nameof(IsFolderSelected));
-                OnPropertyChanged(nameof(IsMacroSelected));
-                CommandManager.InvalidateRequerySuggested();
-            }
-        }
-    }
-
-    public bool IsRegionSelected => _selectedRegion is not null;
-    public bool IsFolderSelected => _selectedFolder is not null;
-    public bool IsMacroSelected  => _selectedMacroNode is not null;
-
-    public string SelectedExecutionMode
-    {
-        get => _selectedRegion?.ExecutionMode ?? "StrictQueue";
-        set
-        {
-            if (_selectedRegion is null || _selectedRegion.ExecutionMode == value) return;
-            _selectedRegion.ExecutionMode = value;
-            OnPropertyChanged();
-            _ = _queueService.SaveAsync();
-        }
-    }
-
-    // ── Команды ───────────────────────────────────────────────────────────
+    // ── Команды ──────────────────────────────────────────────────────────────
 
     public ICommand AddRegionCommand    { get; }
-    public ICommand AddFolderCommand    { get; }
     public ICommand AddMacroCommand     { get; }
     public ICommand RemoveMacroCommand  { get; }
     public ICommand SetPriorityCommand  { get; }
-    public ICommand RenameItemCommand   { get; }
-    public ICommand DeleteItemCommand   { get; }
-    public ICommand SaveCommand         { get; }
+    public ICommand DeleteRegionCommand { get; }
+    public ICommand RenameRegionCommand { get; }
+    public ICommand ClearRegionCommand  { get; }
+    public ICommand NavigateBackCommand { get; }
+    public ICommand RefreshCommand      { get; }
 
-    public QueueViewModel(IQueueService queueService, IProfileService profileService)
+    public QueueViewModel(IQueueManager queueManager, IStorageManager storageManager)
     {
-        _queueService   = queueService;
-        _profileService = profileService;
+        _queueManager   = queueManager;
+        _storageManager = storageManager;
 
-        AddRegionCommand   = new RelayCommand(_ => AddRegion());
-        AddFolderCommand   = new RelayCommand(_ => AddFolder(),   _ => _selectedRegion is not null);
-        AddMacroCommand    = new RelayCommand(_ => AddMacro(),    _ => _selectedRegion is not null);
-        RemoveMacroCommand = new RelayCommand(_ => RemoveMacro(), _ => _selectedMacroNode is not null);
-        SetPriorityCommand = new RelayCommand(_ => SetPriority(), _ => _selectedMacroNode is not null);
-        RenameItemCommand  = new RelayCommand(_ => RenameSelected(),
-                                              _ => _selectedRegion is not null || _selectedFolder is not null);
-        DeleteItemCommand  = new RelayCommand(_ => DeleteSelected(),
-                                              _ => _selectedRegion is not null || _selectedFolder is not null);
-        SaveCommand        = new AsyncRelayCommand(async _ => await _queueService.SaveAsync());
+        AddRegionCommand    = new AsyncRelayCommand(
+            async _ => await AddRegionAsync(),
+            _        => IsAtRoot);
 
-        _queueService.Store.Regions.CollectionChanged += (_, _) => RebuildTree();
-        RebuildTree();
+        AddMacroCommand     = new AsyncRelayCommand(
+            async _ => await AddMacroAsync(),
+            _        => IsInsideRegion);
+
+        RemoveMacroCommand  = new AsyncRelayCommand(
+            async _ => await RemoveMacroAsync(),
+            _        => IsInsideRegion && SelectedMacroItem is not null);
+
+        SetPriorityCommand  = new AsyncRelayCommand(
+            async _ => await SetPriorityAsync(null),
+            _        => IsInsideRegion && SelectedMacroItem is not null);
+
+        DeleteRegionCommand = new AsyncRelayCommand(
+            async _ => await DeleteRegionAsync(),
+            _        => IsAtRoot && SelectedRegionItem is not null);
+
+        RenameRegionCommand = new AsyncRelayCommand(
+            async _ => await RenameRegionAsync(),
+            _        => IsAtRoot && SelectedRegionItem is not null);
+
+        ClearRegionCommand  = new AsyncRelayCommand(
+            async _ => await ClearRegionAsync(),
+            _        => IsInsideRegion);
+
+        NavigateBackCommand = new AsyncRelayCommand(
+            async _ => await NavigateBackAsync(),
+            _        => IsInsideRegion);
+
+        RefreshCommand      = new AsyncRelayCommand(
+            async _ => await RefreshAsync());
+
+        _ = RefreshAsync();
     }
 
-    // ── Построение VM-дерева (ленивая загрузка) ──────────────────────────
+    // ── Построение пути макроса из виртуального дерева ───────────────────────
 
-    public void RebuildTree()
+    /// <summary>
+    /// Возвращает родительский путь (без имени макроса): "Программа  ›  Папка".
+    /// Пустая строка если макрос не в дереве.
+    /// </summary>
+    internal static string BuildLocationPath(SystemMap map, Guid macroId)
     {
-        RegionNodes.Clear();
-        foreach (var region in _queueService.Store.Regions)
+        const string sep = "  ›  ";
+        foreach (var root in map.Roots)
         {
-            var r       = region;  // capture для замыкания
-            var regionVm = new QueueRegionNodeVm(region, () => BuildRegionChildren(r));
-            RegionNodes.Add(regionVm);
+            var result = FindInNode(root, macroId, [root.Name], sep);
+            if (result is not null) return result;
+        }
+        return string.Empty;
+    }
+
+    private static string? FindInNode(
+        VirtualTreeNode node, Guid macroId, List<string> segments, string sep)
+    {
+        IEnumerable<Guid>            macroIds;
+        IEnumerable<VirtualTreeNode> children;
+
+        if (node is AppFolderNode app)
+        {
+            macroIds = app.MacroIds;
+            children = app.Children;
+        }
+        else if (node is FolderNode folder)
+        {
+            macroIds = folder.MacroIds;
+            children = folder.Children;
+        }
+        else return null;
+
+        if (macroIds.Contains(macroId))
+            return string.Join(sep, segments);
+
+        foreach (var child in children)
+        {
+            var next = new List<string>(segments) { child.Name };
+            var hit  = FindInNode(child, macroId, next, sep);
+            if (hit is not null) return hit;
+        }
+        return null;
+    }
+
+    // ── Загрузка данных ───────────────────────────────────────────────────────
+
+    public async Task RefreshAsync()
+    {
+        var regions   = await _queueManager.GetAllRegionsAsync().ConfigureAwait(false);
+        var systemMap = await _storageManager.GetVirtualTreeAsync().ConfigureAwait(false);
+        var manifests = await _storageManager.GetAllMacrosAsync().ConfigureAwait(false);
+
+        _systemMap     = systemMap;
+        _manifestCache = manifests.ToDictionary(m => m.Id);
+
+        // Ищем текущий регион в обновлённом списке (мог быть удалён)
+        var currentMatch = _currentRegion is null
+            ? null
+            : regions.FirstOrDefault(r => r.RegionId == _currentRegion.RegionId);
+
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            DisplayItems.Clear();
+
+            if (currentMatch is null)
+            {
+                // Если текущий регион исчез — возвращаемся в корень
+                if (_currentRegion is not null) SetCurrentRegion(null);
+                foreach (var r in regions)
+                    DisplayItems.Add(new RegionListItemVm(r));
+            }
+            else
+            {
+                _currentRegion = currentMatch;
+                foreach (var item in BuildMacroItems(currentMatch, systemMap))
+                    DisplayItems.Add(item);
+            }
+
+            CommandManager.InvalidateRequerySuggested();
+        });
+    }
+
+    private IEnumerable<MacroQueueItemVm> BuildMacroItems(RegionQueue region, SystemMap map)
+    {
+        foreach (var entry in region.Entries
+                     .OrderBy(e => e.Priority == 0 ? int.MaxValue : e.Priority))
+        {
+            if (!_manifestCache.TryGetValue(entry.MacroId, out var manifest)) continue;
+            var loc = BuildLocationPath(map, entry.MacroId);
+            yield return new MacroQueueItemVm(entry, manifest, region, loc);
         }
     }
 
-    // Строит дочерние узлы региона — вызывается только при раскрытии узла.
-    private IEnumerable<QueueNodeVm> BuildRegionChildren(QueueRegion region)
-    {
-        foreach (var (macro, profile, path) in GetAllMacrosWithPaths())
-            if (macro.RegionId == region.Id)
-                yield return new QueueMacroRefNodeVm(macro, profile, region, path);
-        foreach (var folder in region.Folders)
-            yield return BuildFolderVm(folder, region);
-    }
+    // ── Drill-down навигация ──────────────────────────────────────────────────
 
-    private QueueFolderNodeVm BuildFolderVm(QueueFolder folder, QueueRegion region)
+    public void DrillInto(RegionListItemVm regionItem)
     {
-        var f = folder;  // capture для замыкания
-        return new QueueFolderNodeVm(folder, region, () => BuildFolderChildren(f, region));
-    }
+        SetCurrentRegion(regionItem.Region);
 
-    // Строит дочерние узлы папки — вызывается только при раскрытии папки.
-    private static IEnumerable<QueueNodeVm> BuildFolderChildren(QueueFolder folder, QueueRegion region)
-    {
-        foreach (var sub in folder.SubFolders)
-            yield return new QueueFolderNodeVm(sub, region);
-    }
-
-    private IEnumerable<(MacroEntry Macro, AppProfile Profile, string Path)> GetAllMacrosWithPaths()
-    {
-        foreach (var p in _profileService.Profiles)
+        var map = _systemMap ?? new SystemMap();
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            foreach (var m in p.Macros)
-                yield return (m, p, p.FriendlyName);
-            foreach (var f in p.Folders)
-                foreach (var item in GetFromFolder(f, p, p.FriendlyName))
-                    yield return item;
-        }
+            DisplayItems.Clear();
+            foreach (var item in BuildMacroItems(regionItem.Region, map))
+                DisplayItems.Add(item);
+        });
     }
 
-    private static IEnumerable<(MacroEntry, AppProfile, string)> GetFromFolder(
-        VisualFolder f, AppProfile p, string parentPath)
+    private async Task NavigateBackAsync()
     {
-        var path = $"{parentPath} / {f.Name}";
-        foreach (var m in f.Macros)
-            yield return (m, p, path);
-        foreach (var sub in f.SubFolders)
-            foreach (var item in GetFromFolder(sub, p, path))
-                yield return item;
+        SetCurrentRegion(null);
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Добавить регион ───────────────────────────────────────────────────
+    // ── Добавить регион ───────────────────────────────────────────────────────
 
-    private void AddRegion()
+    private async Task AddRegionAsync()
     {
-        var dialog = new RenameDialog("Новый регион") { Owner = WpfApp.Current.MainWindow };
-        if (dialog.ShowDialog() != true) return;
-
-        if (!_queueService.TryAddRegion(dialog.ResultText ?? string.Empty, out var region, out var error))
+        string? name = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            WpfMessageBox.Show(error, "Ошибка", WpfMessageBoxButton.OK, WpfMessageBoxImage.Warning);
-            return;
-        }
-        SelectedRegion = region;
-        _ = _queueService.SaveAsync();
+            var dlg = new RenameDialog("Новый регион") { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) name = dlg.ResultText;
+        });
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        var region = new RegionQueue { Name = name };
+        await _queueManager.SaveRegionAsync(region).ConfigureAwait(false);
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Добавить папку ─────────────────────────────────────────────────────
+    // ── Добавить макрос (только Release) в текущий регион ────────────────────
 
-    private void AddFolder()
+    private async Task AddMacroAsync()
     {
-        if (_selectedRegion is null) return;
+        if (_currentRegion is null) return;
 
-        var dialog = new RenameDialog("Новая папка") { Owner = WpfApp.Current.MainWindow };
-        if (dialog.ShowDialog() != true) return;
+        var systemMap = _systemMap ?? await _storageManager.GetVirtualTreeAsync().ConfigureAwait(false);
+        var manifests = await _storageManager.GetAllMacrosAsync().ConfigureAwait(false);
 
-        if (!_queueService.TryAddFolder(_selectedRegion, _selectedFolder, dialog.ResultText ?? string.Empty,
-                out var folder, out var error))
+        // Все макросы (Beta + Release); путь = "Программа  ›  Папка" (без имени макроса)
+        var allMacros = manifests
+            .Select(m => (m, BuildLocationPath(systemMap, m.Id)))
+            .ToList();
+
+        (MacroManifest Manifest, string Path)? selected = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            WpfMessageBox.Show(error, "Ошибка", WpfMessageBoxButton.OK, WpfMessageBoxImage.Warning);
-            return;
-        }
-        SelectedFolder = folder;
-        _ = _queueService.SaveAsync();
-        RebuildTree();
+            var dlg = new AddMacroToQueueDialog(allMacros) { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) selected = dlg.SelectedMacro;
+        });
+        if (selected is null) return;
+
+        await _queueManager.AddMacroToRegionAsync(
+            _currentRegion.RegionId, selected.Value.Manifest.Id, 0).ConfigureAwait(false);
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Добавить макрос в регион ──────────────────────────────────────────
+    // ── Убрать выбранный макрос из региона ───────────────────────────────────
 
-    private void AddMacro()
+    private async Task RemoveMacroAsync()
     {
-        if (_selectedRegion is null) return;
+        if (SelectedMacroItem is not { } item) return;
 
-        var allMacros = GetAllMacrosWithPaths().ToList();
-        var dialog    = new AddMacroToQueueDialog(allMacros) { Owner = WpfApp.Current.MainWindow };
-        if (dialog.ShowDialog() != true || dialog.SelectedMacro is null) return;
+        bool confirmed = false;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            confirmed = WpfMessageBox.Show(
+                $"Убрать «{item.Manifest.Name}» из очереди?",
+                "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question)
+                == WpfMessageBoxResult.Yes;
+        });
+        if (!confirmed) return;
 
-        var (macro, profile, _) = dialog.SelectedMacro.Value;
-        macro.RegionId = _selectedRegion.Id;
-        _ = _profileService.SaveProfileAsync(profile);
-        RebuildTree();
+        await _queueManager.RemoveMacroFromRegionAsync(
+            item.Region.RegionId, item.Entry.MacroId).ConfigureAwait(false);
+        SelectedItem = null;
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Убрать макрос из очереди ──────────────────────────────────────────
+    // ── Задать приоритет + пересортировать ───────────────────────────────────
 
-    private void RemoveMacro()
+    public async Task SetPriorityAsync(MacroQueueItemVm? target)
     {
-        if (_selectedMacroNode is null) return;
-
-        var res = WpfMessageBox.Show(
-            $"Убрать «{_selectedMacroNode.Macro.Name}» из очереди?\nМакрос останется в профиле.",
-            "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question);
-        if (res != WpfMessageBoxResult.Yes) return;
-
-        _selectedMacroNode.Macro.RegionId = null;
-        _ = _profileService.SaveProfileAsync(_selectedMacroNode.Profile);
-        SelectedMacroNode = null;
-        RebuildTree();
-    }
-
-    // ── Задать приоритет ──────────────────────────────────────────────────
-
-    public void SetPriority(QueueMacroRefNodeVm? targetNode = null)
-    {
-        var node = targetNode ?? _selectedMacroNode;
+        var node = target ?? SelectedMacroItem;
         if (node is null) return;
 
-        var dialog = new PriorityDialog(node.QueuePriority) { Owner = WpfApp.Current.MainWindow };
-        if (dialog.ShowDialog() != true) return;
+        int? newPriority = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
+        {
+            var dlg = new PriorityDialog(node.Priority) { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) newPriority = dlg.ResultPriority;
+        });
+        if (newPriority is null) return;
 
-        node.QueuePriority = dialog.ResultPriority;
-        _ = _profileService.SaveProfileAsync(node.Profile);
+        node.Priority = newPriority.Value;
+        await _queueManager.UpdatePriorityAsync(
+            node.Region.RegionId, node.Entry.MacroId, newPriority.Value).ConfigureAwait(false);
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Переименовать выбранный элемент ───────────────────────────────────
+    // Синхронный перегруз для code-behind (из ContextMenu)
+    public void SetPriority(MacroQueueItemVm? target = null)
+        => _ = SetPriorityAsync(target);
 
-    private void RenameSelected()
+    // ── Очистить все макросы текущего региона ────────────────────────────────
+
+    private async Task ClearRegionAsync()
     {
-        if (_selectedFolder is not null && _selectedRegion is not null)
+        if (_currentRegion is null) return;
+
+        bool confirmed = false;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            var dialog = new RenameDialog(_selectedFolder.Name) { Owner = WpfApp.Current.MainWindow };
-            if (dialog.ShowDialog() != true) return;
+            confirmed = WpfMessageBox.Show(
+                $"Очистить регион «{_currentRegion.Name}»?\nВсе макросы будут удалены из очереди.",
+                "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question)
+                == WpfMessageBoxResult.Yes;
+        });
+        if (!confirmed) return;
 
-            var (parent, found) = QueueService.FindFolder(_selectedRegion, _selectedFolder);
-            if (!found) return;
-
-            if (!_queueService.TryRenameFolder(_selectedFolder, parent, _selectedRegion,
-                    dialog.ResultText ?? string.Empty, out var error))
-            {
-                WpfMessageBox.Show(error, "Ошибка", WpfMessageBoxButton.OK, WpfMessageBoxImage.Warning);
-                return;
-            }
-            _ = _queueService.SaveAsync();
-            RebuildTree();
-            return;
-        }
-
-        if (_selectedRegion is not null)
-        {
-            var dialog = new RenameDialog(_selectedRegion.Name) { Owner = WpfApp.Current.MainWindow };
-            if (dialog.ShowDialog() != true) return;
-
-            if (!_queueService.TryRenameRegion(_selectedRegion,
-                    dialog.ResultText ?? string.Empty, out var error))
-            {
-                WpfMessageBox.Show(error, "Ошибка", WpfMessageBoxButton.OK, WpfMessageBoxImage.Warning);
-                return;
-            }
-            _ = _queueService.SaveAsync();
-            RebuildTree();
-        }
+        _currentRegion.Entries.Clear();
+        await _queueManager.SaveRegionAsync(_currentRegion).ConfigureAwait(false);
+        SelectedItem = null;
+        await RefreshAsync().ConfigureAwait(false);
     }
 
-    // ── Удалить выбранный элемент ──────────────────────────────────────────
+    // ── Удалить выбранный регион ─────────────────────────────────────────────
 
-    private void DeleteSelected()
+    private async Task DeleteRegionAsync()
     {
-        if (_selectedFolder is not null && _selectedRegion is not null)
+        if (SelectedRegionItem is not { } item) return;
+
+        bool confirmed = false;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            var res = WpfMessageBox.Show(
-                $"Удалить папку «{_selectedFolder.Name}»?",
-                "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question);
-            if (res != WpfMessageBoxResult.Yes) return;
+            confirmed = WpfMessageBox.Show(
+                $"Удалить регион «{item.Region.Name}»?\nВсе записи в нём будут потеряны.",
+                "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question)
+                == WpfMessageBoxResult.Yes;
+        });
+        if (!confirmed) return;
 
-            var (parent, _) = QueueService.FindFolder(_selectedRegion, _selectedFolder);
-            _queueService.DeleteFolder(_selectedRegion, parent, _selectedFolder);
-            SelectedFolder = null;
-            _ = _queueService.SaveAsync();
-            RebuildTree();
-            return;
-        }
+        await _queueManager.DeleteRegionAsync(item.Region.RegionId).ConfigureAwait(false);
+        SelectedItem = null;
+        await RefreshAsync().ConfigureAwait(false);
+    }
 
-        if (_selectedRegion is not null)
+    // ── Переименовать выбранный регион ────────────────────────────────────────
+
+    private async Task RenameRegionAsync()
+    {
+        if (SelectedRegionItem is not { } item) return;
+
+        string? newName = null;
+        WpfApp.Current?.Dispatcher.Invoke(() =>
         {
-            var res = WpfMessageBox.Show(
-                $"Удалить регион «{_selectedRegion.Name}»?\nМакросы, привязанные к этому региону, перестанут выполняться в очереди.",
-                "Подтверждение", WpfMessageBoxButton.YesNo, WpfMessageBoxImage.Question);
-            if (res != WpfMessageBoxResult.Yes) return;
+            var dlg = new RenameDialog(item.Region.Name) { Owner = WpfApp.Current.MainWindow };
+            if (dlg.ShowDialog() == true) newName = dlg.ResultText;
+        });
+        if (string.IsNullOrWhiteSpace(newName)) return;
 
-            _queueService.DeleteRegion(_selectedRegion);
-            SelectedRegion = null;
-            _ = _queueService.SaveAsync();
-        }
+        item.Region.Name = newName;
+        await _queueManager.SaveRegionAsync(item.Region).ConfigureAwait(false);
+        await RefreshAsync().ConfigureAwait(false);
     }
 }

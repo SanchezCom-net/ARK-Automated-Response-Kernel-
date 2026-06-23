@@ -10,7 +10,7 @@ public sealed class ModelManagerTests
 {
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
-    private static (ILogService log, IConfigService cfg) MakeDeps(
+    private static (ILogService log, IConfigService cfg, IOverlayService overlay, IHardwareAccelerator hw) MakeDeps(
         bool useGpu = false,
         string language = "ru",
         string whisperPath = "",
@@ -34,7 +34,13 @@ public sealed class ModelManagerTests
         };
         cfg.Current.Returns(config);
 
-        return (log, cfg);
+        cfg.AppSettings.Returns(new ARK.UI.Core.Models.AppSettings());
+
+        var overlay = Substitute.For<IOverlayService>();
+        var hw      = Substitute.For<IHardwareAccelerator>();
+        hw.IsGpuAccelerationAvailable.Returns(false);
+
+        return (log, cfg, overlay, hw);
     }
 
     // ── Happy Path ───────────────────────────────────────────────────────────────
@@ -43,8 +49,8 @@ public sealed class ModelManagerTests
     public async Task InitializeAsync_WhenGpuDisabledAndNoModel_CompletesWithoutException()
     {
         // Arrange — модель не существует на диске (путь пустой → Default)
-        var (log, cfg) = MakeDeps(useGpu: false, language: "ru");
-        await using var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false, language: "ru");
+        await using var manager = new ModelManager(log, cfg, overlay, hw);
 
         // Act — не должно бросить исключение, WhenReadyAsync должен завершиться
         await manager.InitializeAsync();
@@ -58,8 +64,8 @@ public sealed class ModelManagerTests
     public async Task InitializeAsync_IsDemultiplexed_SecondCallIsNoop()
     {
         // Arrange
-        var (log, cfg) = MakeDeps(useGpu: false);
-        await using var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false);
+        await using var manager = new ModelManager(log, cfg, overlay, hw);
 
         // Act — два параллельных вызова не должны дублировать загрузку
         await Task.WhenAll(
@@ -75,8 +81,8 @@ public sealed class ModelManagerTests
     public async Task RecognizeAsync_WhenNotReady_ReturnsEmptyString()
     {
         // Arrange
-        var (log, cfg) = MakeDeps(useGpu: false);
-        await using var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false);
+        await using var manager = new ModelManager(log, cfg, overlay, hw);
         using var stream = new MemoryStream();
 
         // Act — вызов RecognizeAsync без InitializeAsync
@@ -90,8 +96,8 @@ public sealed class ModelManagerTests
     public async Task SwitchModelAsync_DisposesOldWrapperAndLogsSwitch()
     {
         // Arrange
-        var (log, cfg) = MakeDeps(useGpu: false);
-        await using var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false);
+        await using var manager = new ModelManager(log, cfg, overlay, hw);
         await manager.InitializeAsync();
 
         // Act — переключаемся на Vosk (путь не существует → IsReady=false, но без краша)
@@ -109,8 +115,8 @@ public sealed class ModelManagerTests
     public async Task DisposeAsync_IsIdempotent()
     {
         // Arrange
-        var (log, cfg) = MakeDeps(useGpu: false);
-        var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false);
+        var manager = new ModelManager(log, cfg, overlay, hw);
         await manager.InitializeAsync();
 
         // Act — двойной Dispose не должен бросить
@@ -122,8 +128,8 @@ public sealed class ModelManagerTests
     public async Task ConfigSaved_WithSameLanguage_DoesNotTriggerSwitch()
     {
         // Arrange
-        var (log, cfg) = MakeDeps(useGpu: false, language: "ru");
-        await using var manager = new ModelManager(log, cfg);
+        var (log, cfg, overlay, hw) = MakeDeps(useGpu: false, language: "ru");
+        await using var manager = new ModelManager(log, cfg, overlay, hw);
         await manager.InitializeAsync();
 
         // Act — симулируем сохранение конфига без смены языка

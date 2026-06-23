@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
+using Microsoft.Extensions.DependencyInjection;
 using SanitizeUtil = ARK.UI.Core.TextSanitizer;
 
 namespace ARK.UI.Core.Nodes;
@@ -38,76 +40,103 @@ public sealed class SpeechTriggerNode : BaseNode
         set { if (_requiredKeyword != value) { _requiredKeyword = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    public override Task OnStartListeningAsync(CancellationToken ct)
+    {
+        DebugSink?.Invoke($"[TRIGGER INIT] SpeechTrigger [{PhrasesList.Count} фраз] → IsListening=true, ожидает голосовую команду.");
+        return Task.CompletedTask;
+    }
+
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         var cleanPhrases = PhrasesList;
         var kw           = SanitizeUtil.Sanitize(RequiredKeyword);
         DebugSink?.Invoke($"[ТРИГГЕР] Запуск. Шаблонов фраз: {cleanPhrases.Count}. Ключевое слово: '{kw}'.");
 
-        // ── Input: текст прилетает по серебряному проводу ─────────────────
+        // ── Сбор входного текста: приоритет серебряный провод → контекст от EventMonitor ──
+
         string incomingText = string.Empty;
-        bool hasInput = TryApplyContextInput<string>("Text", v => incomingText = v);
+        bool   hasInput     = false;
+
+        // 1. Серебряный провод (DataBus)
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _rawST))
+        {
+            var _stStr = _rawST as string ?? _rawST?.ToString();
+            if (_stStr is not null) { incomingText = _stStr; hasInput = true; }
+        }
+
+        // 2. MacroExecutionContext.Variables["SpeechRecognizedText"] — от EventMonitor через MacroOrchestrator
+        if (!hasInput)
+        {
+            var ctxSpeech = CurrentContext?.Variables.TryGetValue("SpeechRecognizedText", out var _csv) == true
+                ? _csv?.ToString() : null;
+            if (!string.IsNullOrEmpty(ctxSpeech)) { incomingText = ctxSpeech; hasInput = true; }
+        }
+
+        // ── Матчинг входного текста (DataBus или контекст) ────────────────────────────────
 
         if (hasInput && !string.IsNullOrEmpty(incomingText))
         {
             var sanitizedInput = SanitizeUtil.Sanitize(incomingText);
 
-            await logger.LogInfoAsync(Name, $"[SpeechTriggerNode] Проверка ноды '{Name}':").ConfigureAwait(false);
-            await logger.LogInfoAsync(Name, $" -> Источник: серебряный провод данных. Входящий текст: '{sanitizedInput}'").ConfigureAwait(false);
+            await NodeLogger!.LogInfoAsync(Name, $"[SpeechTriggerNode] Проверка ноды '{Name}':").ConfigureAwait(false);
+            await NodeLogger!.LogInfoAsync(Name, $" -> Источник: входной текст. '{sanitizedInput}'").ConfigureAwait(false);
 
             if (kw.Length > 0)
             {
                 bool kwFound = sanitizedInput.Contains(kw, StringComparison.Ordinal);
-                await logger.LogInfoAsync(Name,
+                await NodeLogger!.LogInfoAsync(Name,
                     $" -> Обязательное ключевое слово: '{kw}' (Статус нахождения: {(kwFound ? "НАЙДЕНО" : "НЕ НАЙДЕНО")})")
                     .ConfigureAwait(false);
                 if (!kwFound)
                 {
-                    await logger.LogInfoAsync(Name, " -> СТАТУС: ОТКЛОНЕН — ключевое слово не найдено в данных").ConfigureAwait(false);
+                    await NodeLogger!.LogInfoAsync(Name, " -> СТАТУС: ОТКЛОНЕН — ключевое слово не найдено в данных").ConfigureAwait(false);
                     DebugSink?.Invoke("[ТРИГГЕР] Ключевое слово не найдено во входном тексте. Пропуск.");
-                    return false;
+                    return NodeResult.Failure("Ключевое слово не найдено.");
                 }
             }
 
             if (cleanPhrases.Count == 0)
             {
-                await logger.LogInfoAsync(Name, " -> Шаблоны фраз не заданы. Проверка невозможна.").ConfigureAwait(false);
-                await logger.LogInfoAsync(Name, " -> СТАТУС: ОТКЛОНЕН — нет шаблонов для сравнения").ConfigureAwait(false);
+                await NodeLogger!.LogInfoAsync(Name, " -> Шаблоны фраз не заданы. Проверка невозможна.").ConfigureAwait(false);
+                await NodeLogger!.LogInfoAsync(Name, " -> СТАТУС: ОТКЛОНЕН — нет шаблонов для сравнения").ConfigureAwait(false);
                 DebugSink?.Invoke("[ТРИГГЕР] Шаблоны не заданы. Пропуск.");
-                return false;
+                return NodeResult.Failure("Шаблоны фраз не заданы.");
             }
 
             foreach (var phrase in cleanPhrases)
             {
-                var (isMatch, matched, total) = EvaluatePhraseMatch(sanitizedInput, phrase, kw);
-                double score = total > 0 ? matched * 100.0 / total : 100.0;
+                var (isMatch, matchedW, total) = EvaluatePhraseMatch(sanitizedInput, phrase, kw);
+                double score = total > 0 ? matchedW * 100.0 / total : 100.0;
 
-                await logger.LogInfoAsync(Name,
+                await NodeLogger!.LogInfoAsync(Name,
                     $" -> Сравнение входной фразы '{sanitizedInput}' с шаблоном '{Sanitize(phrase)}'")
                     .ConfigureAwait(false);
-                await logger.LogInfoAsync(Name,
+                await NodeLogger!.LogInfoAsync(Name,
                     $" -> Результат Fuzzy Matching: {score:F0}% (Необходимый порог: 100%)")
                     .ConfigureAwait(false);
-                await logger.LogInfoAsync(Name,
+                await NodeLogger!.LogInfoAsync(Name,
                     $" -> СТАТУС: {(isMatch ? "УСПЕШНО ЗАПУЩЕН" : "ОТКЛОНЕН ПО ПОРОГУ СОВПАДЕНИЯ")}")
                     .ConfigureAwait(false);
 
                 if (!isMatch) continue;
 
                 DebugSink?.Invoke($"[ТРИГГЕР] Совпадение с шаблоном '{phrase}'. Активирую по входному тексту.");
-                if (IsDataOutputEnabled)
-                    LastOutputValue = new DataPacket { Type = DataType.Text, Payload = incomingText };
-                DebugSink?.Invoke($"[ВЫХОД] DataPacket записан: «{incomingText}»");
-                await logger.LogInfoAsync(Name, $"[ГОЛОС] Нода активирована внешним текстом: '{incomingText}'").ConfigureAwait(false);
-                return true;
+                LastOutputValue = new DataPacket { Type = DataType.Text, Payload = incomingText };
+                DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{incomingText}»");
+                await NodeLogger!.LogInfoAsync(Name, $"[ГОЛОС] Нода активирована текстом: '{incomingText}'").ConfigureAwait(false);
+                LogToBlackBox($"[ГОЛОС] Активирован текстом: '{sanitizedInput}'");
+                var _sid0 = inputPacket?.SessionId ?? Guid.NewGuid();
+                var _out0 = DataBusPacket.Text(_sid0);
+                DataBus?.Set(_out0.SessionId, _out0.DataId, incomingText);
+                return NodeResult.Success(_out0);
             }
 
-            await logger.LogInfoAsync(Name, " -> Ни один шаблон не прошёл порог совпадения. Нода не активирована.").ConfigureAwait(false);
+            await NodeLogger!.LogInfoAsync(Name, " -> Ни один шаблон не прошёл порог совпадения. Нода не активирована.").ConfigureAwait(false);
             DebugSink?.Invoke("[ТРИГГЕР] Входной текст не совпал ни с одним из синонимов. Пропуск.");
-            return false;
+            return NodeResult.Failure("Ни один шаблон не совпал.");
         }
 
         // ── Режим интерактивного теста ─────────────────────────────────────
@@ -116,41 +145,58 @@ public sealed class SpeechTriggerNode : BaseNode
             string testPhrase = cleanPhrases.FirstOrDefault() ?? "Тестовая голосовая команда";
             DebugSink?.Invoke($"[ТРИГГЕР] Режим интерактивного теста — активирую мгновенно с фразой: \"{testPhrase}\"");
             LastOutputValue = new DataPacket { Type = DataType.Text, Payload = testPhrase };
-            DebugSink?.Invoke($"[ВЫХОД] DataPacket записан: «{testPhrase}»");
-            return true;
+            DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{testPhrase}»");
+            var _sid1 = inputPacket?.SessionId ?? Guid.NewGuid();
+            var _out1 = DataBusPacket.Text(_sid1);
+            DataBus?.Set(_out1.SessionId, _out1.DataId, testPhrase);
+            return NodeResult.Success(_out1);
         }
 
-        // ── Реальный режим: нода активирована MacroScheduler-ом ──────────
-        DebugSink?.Invoke("[ТРИГГЕР] Реальный режим — нода активирована MacroScheduler-ом.");
-
-        var rawSpeech  = CurrentContext?.Variables.TryGetValue("SpeechRecognizedText", out var sv) == true
-            ? sv?.ToString() ?? string.Empty : string.Empty;
-        var speechText = SanitizeUtil.Sanitize(rawSpeech);
-
-        await logger.LogInfoAsync(Name, $"[SpeechTriggerNode] Проверка ноды '{Name}':").ConfigureAwait(false);
-        await logger.LogInfoAsync(Name, $" -> Распознанная фраза (санирована): '{speechText}'").ConfigureAwait(false);
-
-        if (kw.Length > 0)
+        // ── Реальный V3-режим: подписываемся на ISpeechTriggerService ────────
+        if (!IsListening)
         {
-            bool kwFound = speechText.Contains(kw, StringComparison.Ordinal);
-            await logger.LogInfoAsync(Name,
-                $" -> Обязательное ключевое слово: '{kw}' (Статус нахождения: {(kwFound ? "НАЙДЕНО" : "НЕ НАЙДЕНО")})")
-                .ConfigureAwait(false);
-            await logger.LogInfoAsync(Name,
-                $" -> СТАТУС: {(kwFound ? "УСПЕШНО ЗАПУЩЕН" : "ОТКЛОНЕН — ключевое слово отсутствует")}")
-                .ConfigureAwait(false);
-            DebugSink?.Invoke($"[IntentProcessor] «{kw}» {(kwFound ? "⊆" : "⊄")} «{speechText}» {(kwFound ? "✓" : "✗")}");
-
-            if (!kwFound) return false;
-
-            if (IsDataOutputEnabled)
-                LastOutputValue = new DataPacket { Type = DataType.Text, Payload = speechText };
-            return true;
+            DebugSink?.Invoke("[ТРИГГЕР] IsListening=false — Speech-триггер не зарегистрирован.");
+            return NodeResult.Failure("Speech-триггер неактивен (IsListening=false).");
         }
 
-        await logger.LogInfoAsync(Name, " -> Ключевое слово не задано — нода активируется безусловно.").ConfigureAwait(false);
-        await logger.LogInfoAsync(Name, " -> СТАТУС: УСПЕШНО ЗАПУЩЕН").ConfigureAwait(false);
-        return true;
+        var speechService = NodeServices!.GetRequiredService<ISpeechTriggerService>();
+        DebugSink?.Invoke($"[ТРИГГЕР] V3: подписываюсь на ISpeechTriggerService, жду совпадения ({cleanPhrases.Count} фраз)...");
+
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Func<string, bool, Task> handler = (recognizedText, _) =>
+        {
+            var sanitized = SanitizeUtil.Sanitize(recognizedText);
+            if (kw.Length > 0 && !sanitized.Contains(kw, StringComparison.Ordinal))
+                return Task.CompletedTask;
+            if (cleanPhrases.Count > 0 && !cleanPhrases.Any(p => IsPhraseMatch(sanitized, p)))
+                return Task.CompletedTask;
+            tcs.TrySetResult(recognizedText);
+            return Task.CompletedTask;
+        };
+
+        speechService.SpeechRecognized += handler;
+        string speechMatched;
+        try
+        {
+            using var reg = ct.Register(() => tcs.TrySetCanceled(ct), useSynchronizationContext: false);
+            speechMatched = await tcs.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            speechService.SpeechRecognized -= handler;
+        }
+
+        var matchedSanitized = SanitizeUtil.Sanitize(speechMatched);
+        DebugSink?.Invoke($"[ТРИГГЕР] Голосовая команда совпала: '{matchedSanitized}'");
+        await NodeLogger!.LogInfoAsync(Name, $"[ГОЛОС] Нода активирована командой: '{matchedSanitized}'").ConfigureAwait(false);
+        LogToBlackBox($"[ГОЛОС] Распознана фраза: '{matchedSanitized}'");
+
+        LastOutputValue = new DataPacket { Type = DataType.Text, Payload = speechMatched };
+        var sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var outPacket = DataBusPacket.Text(sid);
+        DataBus?.Set(outPacket.SessionId, outPacket.DataId, speechMatched);
+        return NodeResult.Success(outPacket);
     }
 
     private static string Sanitize(string text) => SanitizeUtil.Sanitize(text);

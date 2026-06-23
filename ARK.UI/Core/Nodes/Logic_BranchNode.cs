@@ -1,5 +1,5 @@
 using System.Globalization;
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -47,12 +47,16 @@ public sealed class Logic_BranchNode : BaseNode
         set { if (_ignoreCase != value) { _ignoreCase = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        TryApplyContextInput<string>(nameof(InputValue), v => InputValue = v);
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) InputValue = _s;
+        }
 
         bool result = DataType switch
         {
@@ -62,11 +66,13 @@ public sealed class Logic_BranchNode : BaseNode
             _                     => false
         };
 
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[ЛОГИКА] Сравнение ({InputValue} {CompareType} {TargetValue}) → Результат: {result}")
             .ConfigureAwait(false);
 
-        return result;
+        return result
+            ? NodeResult.Success(inputPacket)
+            : NodeResult.Failure("Условие не выполнено.", inputPacket);
     }
 
     private bool CompareText(string a, string b)

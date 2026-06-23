@@ -16,15 +16,15 @@ namespace ARK.UI.ViewModels;
 
 public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 {
-    private readonly INodeEngine      _nodeEngine;
-    private readonly ILogService      _logger;
-    private readonly IProfileService  _profileService;
-    private readonly IObsService      _obsService;
-    private readonly IConfigService   _configService;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly INodeEngine             _nodeEngine;
+    private readonly ILogService             _logger;
+    private readonly IStorageManager         _storageManager;
+    private readonly IObsService             _obsService;
+    private readonly IConfigService          _configService;
+    private readonly IServiceProvider        _serviceProvider;
+    private readonly IActiveDocumentRegistry _activeDocRegistry;
     private VisualNode?              _selectedNode;
-    private AppProfile?              _currentProfile;
-    private ProfileRegion?           _currentRegion;
+    private MacroDocument?           _currentDoc;
     private MacroEntry?              _currentMacro;
     private CancellationTokenSource? _debounceCts;
 
@@ -146,15 +146,17 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
     public BlueprintEditorViewModel(
         INodeEngine nodeEngine, ILogService logger,
-        IProfileService profileService, IObsService obsService,
-        IConfigService configService, IServiceProvider serviceProvider)
+        IStorageManager storageManager, IObsService obsService,
+        IConfigService configService, IServiceProvider serviceProvider,
+        IActiveDocumentRegistry activeDocRegistry)
     {
-        _nodeEngine      = nodeEngine;
-        _logger          = logger;
-        _profileService  = profileService;
-        _obsService      = obsService;
-        _configService   = configService;
-        _serviceProvider = serviceProvider;
+        _nodeEngine        = nodeEngine;
+        _logger            = logger;
+        _storageManager    = storageManager;
+        _obsService        = obsService;
+        _configService     = configService;
+        _serviceProvider   = serviceProvider;
+        _activeDocRegistry = activeDocRegistry;
         _obsService.ConnectionStatusChanged += OnObsConnectionChanged;
 
         NodeTemplates = BuildNodeTemplates();
@@ -209,14 +211,17 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
         return vn;
     }
 
-    public void ConnectNodes(Guid sourceId, Guid targetId, bool isErrorRoute, bool isDataRoute = false)
+    public void ConnectNodes(Guid sourceId, Guid targetId, bool isErrorRoute,
+        bool isDataRoute = false, bool isCustomDataRoute = false, bool isBlackBoxRoute = false)
     {
         // Toggle: если такая связь уже существует — разрываем её
         var existingLine = ConnectionLines.FirstOrDefault(l =>
-            l.Source.NodeId == sourceId &&
-            l.Target.NodeId == targetId &&
-            l.IsErrorRoute  == isErrorRoute &&
-            l.IsDataRoute   == isDataRoute);
+            l.Source.NodeId    == sourceId         &&
+            l.Target.NodeId    == targetId         &&
+            l.IsErrorRoute     == isErrorRoute     &&
+            l.IsDataRoute      == isDataRoute      &&
+            l.IsCustomDataRoute== isCustomDataRoute&&
+            l.IsBlackBoxRoute  == isBlackBoxRoute);
 
         if (existingLine is not null)
         {
@@ -236,18 +241,21 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
         var conn = new VisualConnection
         {
-            SourceNodeId = sourceId,
-            TargetNodeId = targetId,
-            IsErrorRoute = isErrorRoute,
-            IsDataRoute  = isDataRoute
+            SourceNodeId      = sourceId,
+            TargetNodeId      = targetId,
+            IsErrorRoute      = isErrorRoute,
+            IsDataRoute       = isDataRoute,
+            IsCustomDataRoute = isCustomDataRoute,
+            IsBlackBoxRoute   = isBlackBoxRoute
         };
         VisualConnections.Add(conn);
         _currentMacro?.VisualConnections.Add(conn);
-        ConnectionLines.Add(new VisualConnectionLine(sourceVn, targetVn, isErrorRoute, isDataRoute));
+        ConnectionLines.Add(new VisualConnectionLine(sourceVn, targetVn,
+            isErrorRoute, isDataRoute, isCustomDataRoute, isBlackBoxRoute));
 
         if (isErrorRoute)
             sourceVn.LogicalNode.OnErrorNodeId   = targetId;
-        else if (!isDataRoute)
+        else if (!isDataRoute && !isCustomDataRoute && !isBlackBoxRoute)
             sourceVn.LogicalNode.OnSuccessNodeId = targetId;
 
         SaveCurrent();
@@ -285,8 +293,12 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
         SaveCurrent();
     }
 
-    public void LoadFromMacro(AppProfile profile, ProfileRegion? region, MacroEntry macro)
+    public void LoadFromMacro(MacroDocument doc)
     {
+        // Снимаем регистрацию предыдущего документа до его очистки
+        if (_currentDoc is not null)
+            _activeDocRegistry.Unregister(_currentDoc.Id);
+
         ResetAllNodeStates();
 
         foreach (var vn in VisualNodes)
@@ -299,10 +311,10 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
         VisualNodes.Clear();
         SelectedNode = null;
 
-        _currentProfile = profile;
-        _currentRegion  = region;
-        _currentMacro   = macro;
+        _currentDoc   = doc;
+        _currentMacro = doc.Macro;
 
+        var macro = doc.Macro;
         foreach (var vn in macro.VisualNodes)
         {
             VisualNodes.Add(vn);
@@ -315,7 +327,8 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
             var src = VisualNodes.FirstOrDefault(n => n.NodeId == vc.SourceNodeId);
             var tgt = VisualNodes.FirstOrDefault(n => n.NodeId == vc.TargetNodeId);
             if (src is not null && tgt is not null)
-                ConnectionLines.Add(new VisualConnectionLine(src, tgt, vc.IsErrorRoute, vc.IsDataRoute));
+                ConnectionLines.Add(new VisualConnectionLine(src, tgt,
+                    vc.IsErrorRoute, vc.IsDataRoute, vc.IsCustomDataRoute, vc.IsBlackBoxRoute));
         }
 
         // Гарантируем ровно одну TriggerRootNode: авто-создаём для старых конфигов без неё
@@ -327,9 +340,15 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
             VisualNodes.Add(rootVn);
             macro.VisualNodes.Add(rootVn);
             SubscribeNode(rootVn);
-            // Если StartNodeId не задан — назначаем TriggerRootNode точкой входа
             macro.StartNodeId ??= rootNode.Id;
         }
+
+        // Регистрируем отображаемые ноды: MacroOrchestrator и QueueManager будут использовать
+        // именно эти экземпляры, чтобы SetState() обновлял анимации на канвасе в реальном времени.
+        _activeDocRegistry.Register(
+            doc.Id,
+            VisualNodes.Select(vn => vn.LogicalNode).ToList(),
+            VisualConnections.ToList());
     }
 
     private void OnCultureChanged(object? sender, EventArgs e)
@@ -341,6 +360,9 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        if (_currentDoc is not null)
+            _activeDocRegistry.Unregister(_currentDoc.Id);
+
         LocalizationService.CultureChanged -= OnCultureChanged;
         _obsService.ConnectionStatusChanged -= OnObsConnectionChanged;
         _debounceCts?.Cancel();
@@ -471,10 +493,12 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
     private void DeleteConnection(VisualConnectionLine line)
     {
         var conn = VisualConnections.FirstOrDefault(c =>
-            c.SourceNodeId == line.Source.NodeId &&
-            c.TargetNodeId == line.Target.NodeId &&
-            c.IsErrorRoute == line.IsErrorRoute  &&
-            c.IsDataRoute  == line.IsDataRoute);
+            c.SourceNodeId      == line.Source.NodeId     &&
+            c.TargetNodeId      == line.Target.NodeId     &&
+            c.IsErrorRoute      == line.IsErrorRoute      &&
+            c.IsDataRoute       == line.IsDataRoute       &&
+            c.IsCustomDataRoute == line.IsCustomDataRoute &&
+            c.IsBlackBoxRoute   == line.IsBlackBoxRoute);
 
         if (conn is not null)
         {
@@ -490,7 +514,7 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
         {
             if (line.IsErrorRoute)
                 sourceVn.LogicalNode.OnErrorNodeId   = null;
-            else if (!line.IsDataRoute)
+            else if (!line.IsDataRoute && !line.IsCustomDataRoute && !line.IsBlackBoxRoute)
                 sourceVn.LogicalNode.OnSuccessNodeId = null;
         }
 
@@ -623,6 +647,18 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
             case nameof(Win_BypassQueueNode):
                 logical = new Win_BypassQueueNode
                     { Name = Strings.ResourceManager.GetString("Toolbox_BypassQueueNode_Name") ?? "Вне очереди" };
+                break;
+            case nameof(MacroPolicyNode):
+                logical = new MacroPolicyNode
+                    { Name = Strings.ResourceManager.GetString("Toolbox_MacroPolicyNode_Name") ?? "Политика макроса" };
+                break;
+            case nameof(Logic_SynchronizerNode):
+                logical = new Logic_SynchronizerNode
+                    { Name = Strings.ResourceManager.GetString("Toolbox_SynchronizerNode_Name") ?? "Синхронизатор" };
+                break;
+            case nameof(MacroResetNode):
+                logical = new MacroResetNode
+                    { Name = Strings.ResourceManager.GetString("Toolbox_MacroResetNode_Name") ?? "Сброс состояния" };
                 break;
             case nameof(TriggerRootNode):
                 // Только одна TriggerRootNode на граф — если уже есть, игнорируем дроп
@@ -871,6 +907,34 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
             NodeCategory.UserInterface
         )),
 
+        // ── 7. GUARDIAN / АРХИТЕКТУРА V3 ─────────────────────────────────
+        new NodeTemplateViewModel(new NodeTemplate(
+            typeof(MacroPolicyNode),
+            "Toolbox_MacroPolicyNode_Name",
+            "Toolbox_MacroPolicyNode_Desc",
+            // Иконка: щит с галочкой (политика и защита макроса)
+            "M8,0L1,3 1,9C1,13.4 4,17.5 8,18 12,17.5 15,13.4 15,9L15,3Z " +
+            "M6,9L5,8 4,9 6,11 12,5 11,4Z",
+            NodeCategory.GuardianLogic
+        )),
+        new NodeTemplateViewModel(new NodeTemplate(
+            typeof(Logic_SynchronizerNode),
+            "Toolbox_SynchronizerNode_Name",
+            "Toolbox_SynchronizerNode_Desc",
+            // Иконка: 3 стрелки сходятся в точку (синхронизация потоков)
+            "M8,7L8,0 M4,4L8,0 12,4 M2,9L2,5 6,5 M14,9L14,5 10,5 " +
+            "M2,9C2,11 4,13 8,13 12,13 14,11 14,9 M8,13L8,18",
+            NodeCategory.GuardianLogic
+        )),
+        new NodeTemplateViewModel(new NodeTemplate(
+            typeof(MacroResetNode),
+            "Toolbox_MacroResetNode_Name",
+            "Toolbox_MacroResetNode_Desc",
+            // Иконка: круговая стрелка перезагрузки
+            "M8,2C4.7,2 2,4.7 2,8 2,11.3 4.7,14 8,14 10.4,14 12.5,12.6 13.5,10.5L11.5,10.5C10.7,11.6 9.4,12.3 8,12.3 5.6,12.3 3.7,10.4 3.7,8 3.7,5.6 5.6,3.7 8,3.7 9.3,3.7 10.5,4.3 11.3,5.2L9,5.2 9,7 14,7 14,2 12.3,2 12.3,3.7C11.1,2.7 9.6,2 8,2Z",
+            NodeCategory.GuardianLogic
+        )),
+
         // ── 6. OBS Studio (5 менеджеров) ─────────────────────────────────
         new NodeTemplateViewModel(new NodeTemplate(
             typeof(OBS_SceneManagerNode),
@@ -951,10 +1015,12 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
         var testCtx = new MacroExecutionContext();
         testCtx.Variables["IsInteractiveTest"] = true;
         logicalNode.DebugSink = AppendDebugLog;
-        bool success = await Task.Run(async () =>
-            await logicalNode.ExecuteAsync(_serviceProvider, _logger, testCtx, CancellationToken.None)
+        logicalNode.SetLegacyContext(testCtx);
+        var testResult = await Task.Run(async () =>
+            await logicalNode.ExecuteAsync(_serviceProvider, _logger, null, null, null, CancellationToken.None)
                 .ConfigureAwait(false)
         ).ConfigureAwait(false);
+        bool success = testResult.IsSuccess;
         logicalNode.DebugSink = null;
 
         await _logger.LogInfoAsync(nameof(BlueprintEditorViewModel),
@@ -1097,7 +1163,7 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
     private void ScheduleDebouncedSave()
     {
-        if (_currentProfile is null) return;
+        if (_currentDoc is null) return;
 
         // Cancel без Dispose: Task.Delay держит ссылку на токен отменённого CTS.
         // Немедленный Dispose бросает ObjectDisposedException в таймере ThreadPool.
@@ -1113,14 +1179,12 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
     {
         if (e.PropertyName == nameof(BaseNode.State) && sender is BaseNode logicalNode)
         {
+            // VisualNode.State вычисляется из LogicalNode.State и обновляется автоматически.
+            // Здесь только запускаем анимацию проводов — мы уже на UI-потоке (BaseNode.SetState → Dispatcher.BeginInvoke).
             var newState = logicalNode.State;
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-            {
-                var vn = VisualNodes.FirstOrDefault(n => ReferenceEquals(n.LogicalNode, logicalNode));
-                if (vn is null) return;
-                vn.State = newState;
+            var vn = VisualNodes.FirstOrDefault(n => ReferenceEquals(n.LogicalNode, logicalNode));
+            if (vn is not null)
                 TriggerConnectionAnimations(vn, newState);
-            });
             return;
         }
 
@@ -1169,7 +1233,7 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
     public void ResetAllNodeStates()
     {
-        foreach (var vn   in VisualNodes)     vn.State    = NodeState.Pending;
+        foreach (var vn   in VisualNodes)     vn.LogicalNode.SetState(NodeState.Pending);
         foreach (var line in ConnectionLines) line.IsActive = false;
     }
 
@@ -1177,17 +1241,17 @@ public sealed class BlueprintEditorViewModel : ViewModelBase, IDisposable
 
     private void SaveCurrent()
     {
-        if (_currentProfile is null) return;
-        // Пересобираем индекс ключевых слов перед сохранением — граф мог измениться
+        if (_currentDoc is null) return;
         _currentMacro?.RebuildVoiceKeywordsIndex();
         _ = SaveCurrentAsync();
     }
 
     private async Task SaveCurrentAsync()
     {
+        if (_currentDoc is null) return;
         try
         {
-            await _profileService.SaveProfileAsync(_currentProfile!).ConfigureAwait(false);
+            await _storageManager.SaveMacroAsync(_currentDoc).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

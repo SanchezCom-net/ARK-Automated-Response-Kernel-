@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,34 +31,32 @@ public sealed class ObsToggleMuteNode : BaseNode
         set { if (_isMuted != value) { _isMuted = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected)
         {
-            await logger.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
+            await NodeLogger!.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("OBS не подключён.");
         }
 
         if (SelectedMode == ObsSceneMode.Switch)
         {
-            await obs.SetInputMuteAsync(InputName, IsMuted, cancellationToken).ConfigureAwait(false);
-            await logger.LogInfoAsync(Name,
+            await obs.SetInputMuteAsync(InputName, IsMuted, ct).ConfigureAwait(false);
+            await NodeLogger!.LogInfoAsync(Name,
                 $"[OBS] Источник '{InputName}' — {(IsMuted ? "заглушён" : "включён")}")
                 .ConfigureAwait(false);
-            return true;
+            return NodeResult.Success(null);
         }
 
-        // CheckActive: сравниваем текущее состояние mute с ожидаемым для ветвления графа
-        var isMuted = await obs.IsInputMutedAsync(InputName, cancellationToken).ConfigureAwait(false);
+        var isMuted = await obs.IsInputMutedAsync(InputName, ct).ConfigureAwait(false);
         var isMatch = isMuted == IsMuted;
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[OBS] Проверка mute '{InputName}': {(isMatch ? "СОВПАДАЕТ" : "НЕ СОВПАДАЕТ")} (Заглушён: {isMuted}, Ожидается: {IsMuted})")
             .ConfigureAwait(false);
-        return isMatch;
+        return isMatch ? NodeResult.Success(null) : NodeResult.Failure("Mute-состояние не совпадает.");
     }
 }

@@ -46,7 +46,7 @@ public partial class PriorityDialog : Window
         if (!int.TryParse(PriorityBox.Text, out var value))
             value = 0;
 
-        ResultPriority = Math.Clamp(value, 0, 99);
+        ResultPriority = Math.Clamp(value, 0, 999);
         DialogResult   = true;
     }
 }

@@ -1,3 +1,4 @@
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,24 +33,25 @@ public sealed class OBS_StreamAndRecordManagerNode : BaseNode
         set { if (_streamAction != value) { _streamAction = value; OnPropertyChanged(); } }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        var obs = serviceProvider.GetRequiredService<IObsService>();
+        var obs = NodeServices!.GetRequiredService<IObsService>();
         if (!obs.IsConnected)
         {
-            await logger.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
+            await NodeLogger!.LogWarningAsync(Name, "[OBS] Действие пропущено: нет подключения к OBS Studio.")
                 .ConfigureAwait(false);
-            return false;
+            return NodeResult.Failure("OBS не подключён.");
         }
 
         if (SelectedMode == ObsSceneMode.CheckActive)
         {
             bool isActive = StreamTarget switch
             {
-                ObsStreamTarget.Recording    => await obs.IsRecordingAsync(cancellationToken).ConfigureAwait(false),
-                ObsStreamTarget.Streaming    => await obs.IsStreamingAsync(cancellationToken).ConfigureAwait(false),
-                ObsStreamTarget.ReplayBuffer => await obs.IsReplayBufferActiveAsync(cancellationToken).ConfigureAwait(false),
+                ObsStreamTarget.Recording    => await obs.IsRecordingAsync(ct).ConfigureAwait(false),
+                ObsStreamTarget.Streaming    => await obs.IsStreamingAsync(ct).ConfigureAwait(false),
+                ObsStreamTarget.ReplayBuffer => await obs.IsReplayBufferActiveAsync(ct).ConfigureAwait(false),
                 _                             => false
             };
             bool result = StreamAction switch
@@ -58,27 +60,27 @@ public sealed class OBS_StreamAndRecordManagerNode : BaseNode
                 ObsStreamAction.Stop   => !isActive,
                 _                       => isActive
             };
-            await logger.LogInfoAsync(Name,
+            await NodeLogger!.LogInfoAsync(Name,
                 $"[OBS] Проверка {StreamTarget}: активен={isActive} → результат={result}").ConfigureAwait(false);
-            return result;
+            return result ? NodeResult.Success(null) : NodeResult.Failure($"{StreamTarget} не в ожидаемом состоянии.");
         }
 
         Task switchTask = (StreamTarget, StreamAction) switch
         {
-            (ObsStreamTarget.Recording,    ObsStreamAction.Start)  => obs.StartRecordingAsync(cancellationToken),
-            (ObsStreamTarget.Recording,    ObsStreamAction.Stop)   => obs.StopRecordingAsync(cancellationToken),
-            (ObsStreamTarget.Recording,    ObsStreamAction.Toggle) => obs.ToggleRecordingAsync(cancellationToken),
-            (ObsStreamTarget.Streaming,    ObsStreamAction.Start)  => obs.StartStreamingAsync(cancellationToken),
-            (ObsStreamTarget.Streaming,    ObsStreamAction.Stop)   => obs.StopStreamingAsync(cancellationToken),
-            (ObsStreamTarget.Streaming,    ObsStreamAction.Toggle) => obs.ToggleStreamingAsync(cancellationToken),
-            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Start)  => obs.StartReplayBufferAsync(cancellationToken),
-            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Stop)   => obs.StopReplayBufferAsync(cancellationToken),
-            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Toggle) => obs.ToggleReplayBufferAsync(cancellationToken),
-            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Save)   => obs.SaveReplayBufferAsync(cancellationToken),
-            _                                                        => obs.ToggleRecordingAsync(cancellationToken)
+            (ObsStreamTarget.Recording,    ObsStreamAction.Start)  => obs.StartRecordingAsync(ct),
+            (ObsStreamTarget.Recording,    ObsStreamAction.Stop)   => obs.StopRecordingAsync(ct),
+            (ObsStreamTarget.Recording,    ObsStreamAction.Toggle) => obs.ToggleRecordingAsync(ct),
+            (ObsStreamTarget.Streaming,    ObsStreamAction.Start)  => obs.StartStreamingAsync(ct),
+            (ObsStreamTarget.Streaming,    ObsStreamAction.Stop)   => obs.StopStreamingAsync(ct),
+            (ObsStreamTarget.Streaming,    ObsStreamAction.Toggle) => obs.ToggleStreamingAsync(ct),
+            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Start)  => obs.StartReplayBufferAsync(ct),
+            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Stop)   => obs.StopReplayBufferAsync(ct),
+            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Toggle) => obs.ToggleReplayBufferAsync(ct),
+            (ObsStreamTarget.ReplayBuffer, ObsStreamAction.Save)   => obs.SaveReplayBufferAsync(ct),
+            _                                                        => obs.ToggleRecordingAsync(ct)
         };
         await switchTask.ConfigureAwait(false);
-        await logger.LogInfoAsync(Name, $"[OBS] {StreamTarget} / {StreamAction} — выполнено.").ConfigureAwait(false);
-        return true;
+        await NodeLogger!.LogInfoAsync(Name, $"[OBS] {StreamTarget} / {StreamAction} — выполнено.").ConfigureAwait(false);
+        return NodeResult.Success(null);
     }
 }

@@ -72,4 +72,48 @@
                       Direction="0"
                       Opacity="0.85"/>
 
+    <!-- Сиренево-синий: провод Custom Data Out (кастомные данные) -->
+    <SolidColorBrush x:Key="CustomDataWireBrush" Color="#FF7F7FBF"/>
+
+    <!-- Свечение сиренево-синего провода (x:Shared=False) -->
+    <DropShadowEffect x:Key="CustomDataWireGlowEffect" x:Shared="False"
+                      Color="#FF7F7FBF"
+                      BlurRadius="10"
+                      ShadowDepth="0"
+                      Direction="0"
+                      Opacity="0.8"/>
+
+    <!-- Грифельно-синий: провод Black Box Log (диагностика) -->
+    <SolidColorBrush x:Key="BlackBoxWireBrush" Color="#FF5B9BD5"/>
+
+    <!-- Свечение грифельно-синего провода (x:Shared=False) -->
+    <DropShadowEffect x:Key="BlackBoxWireGlowEffect" x:Shared="False"
+                      Color="#FF5B9BD5"
+                      BlurRadius="10"
+                      ShadowDepth="0"
+                      Direction="0"
+                      Opacity="0.8"/>
+
+    <!-- ══ Эффекты для проводов (всегда включены, мягкие) ══════════════════ -->
+    <!-- Используются на самих линиях Безье через DataTrigger на Stroke.      -->
+    <!-- BlurRadius=8, Opacity=0.5 — тонкое неоновое свечение в покое.        -->
+    <DropShadowEffect x:Key="GoldWireEffect"       x:Shared="False" Color="#FFD4AF37" BlurRadius="8"  ShadowDepth="0" Opacity="0.50"/>
+    <DropShadowEffect x:Key="RubyWireEffect"       x:Shared="False" Color="#FFFF3B30" BlurRadius="8"  ShadowDepth="0" Opacity="0.50"/>
+    <DropShadowEffect x:Key="SilverWireEffect"     x:Shared="False" Color="#FFD3D3D3" BlurRadius="6"  ShadowDepth="0" Opacity="0.35"/>
+    <DropShadowEffect x:Key="CustomDataWireEffect" x:Shared="False" Color="#FF7F7FBF" BlurRadius="8"  ShadowDepth="0" Opacity="0.50"/>
+    <DropShadowEffect x:Key="BlackBoxWireEffect"   x:Shared="False" Color="#FF5B9BD5" BlurRadius="8"  ShadowDepth="0" Opacity="0.50"/>
+    <DropShadowEffect x:Key="TriggerWireEffect"    x:Shared="False" Color="#FF22C55E" BlurRadius="8"  ShadowDepth="0" Opacity="0.55"/>
+    <DropShadowEffect x:Key="QueueWireEffect"      x:Shared="False" Color="#FF10B981" BlurRadius="8"  ShadowDepth="0" Opacity="0.55"/>
+
+    <!-- ══ Пульсирующие эффекты (активное исполнение макроса) ══════════════ -->
+    <!-- Используются на PulsePath: белое ядро (Stroke=White) + цветной нимб. -->
+    <!-- BlurRadius=18, Opacity=0.95 — яркий неоновый орб на тёмном фоне.     -->
+    <DropShadowEffect x:Key="GoldPulseEffect"       x:Shared="False" Color="#FFD4AF37" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+    <DropShadowEffect x:Key="RubyPulseEffect"       x:Shared="False" Color="#FFFF3B30" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+    <DropShadowEffect x:Key="SilverPulseEffect"     x:Shared="False" Color="#FFD3D3D3" BlurRadius="16" ShadowDepth="0" Opacity="0.90"/>
+    <DropShadowEffect x:Key="CustomDataPulseEffect" x:Shared="False" Color="#FFAAAAFF" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+    <DropShadowEffect x:Key="BlackBoxPulseEffect"   x:Shared="False" Color="#FF7BC4FF" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+    <DropShadowEffect x:Key="TriggerPulseEffect"    x:Shared="False" Color="#FF22C55E" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+    <DropShadowEffect x:Key="QueuePulseEffect"      x:Shared="False" Color="#FF10B981" BlurRadius="18" ShadowDepth="0" Opacity="0.95"/>
+
 </ResourceDictionary>

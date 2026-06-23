@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,33 +56,39 @@ public sealed class ClipboardNode : BaseNode
 
     // ── Выполнение ────────────────────────────────────────────────────────
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
-        // ── Полиморфный приём: DataPacket с серебряного провода ───────────
-        DataPacket? packet = null;
-        TryApplyContextInput<DataPacket>(nameof(TextToWrite), v => packet = v);
+        // V3: читаем объект с DataBus; совместимость с DataPacket (V1) сохранена
+        object? _busObj = null;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null)
+            DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out _busObj);
 
-        if (packet is not null)
+        if (_busObj is string _textIn) TextToWrite = _textIn;
+
+        bool ok;
+        if (_busObj is DataPacket _dp)
         {
-            DebugSink?.Invoke(
-                $"[БУФЕР] DataPacket получен: тип={packet.Type}, " +
-                $"payload={packet.Payload?.GetType().Name}, meta=\"{packet.MetaData}\"");
-            return await ExecuteFromPacketAsync(packet, logger).ConfigureAwait(false);
+            DebugSink?.Invoke($"[БУФЕР] DataPacket получен: тип={_dp.Type}, payload={_dp.Payload?.GetType().Name}");
+            ok = await ExecuteFromPacketAsync(_dp, NodeLogger!).ConfigureAwait(false);
+        }
+        else
+        {
+            DebugSink?.Invoke($"[БУФЕР] Режим: тип={SelectedDataType}");
+            ok = SelectedDataType == ClipboardDataType.Text
+                ? await ExecuteTextAsync(NodeServices!, NodeLogger!, ct).ConfigureAwait(false)
+                : await ExecuteImageAsync(NodeLogger!).ConfigureAwait(false);
         }
 
-        // ── Ручной режим: SelectedDataType + ActionType / SelectedImageAction ─
-        DebugSink?.Invoke(
-            $"[БУФЕР] Ручной режим: тип={SelectedDataType}, действие=" +
-            (SelectedDataType == ClipboardDataType.Text
-                ? ActionType.ToString()
-                : SelectedImageAction.ToString()));
+        if (!ok) return NodeResult.Failure("Операция с буфером обмена не удалась.");
 
-        return SelectedDataType == ClipboardDataType.Text
-            ? await ExecuteTextAsync(serviceProvider, logger, cancellationToken).ConfigureAwait(false)
-            : await ExecuteImageAsync(logger).ConfigureAwait(false);
+        var _sid    = inputPacket?.SessionId ?? Guid.NewGuid();
+        string _str = LastOutputValue is DataPacket _lpkt ? _lpkt.Payload?.ToString() ?? string.Empty
+                    : LastOutputValue as string ?? string.Empty;
+        var _out    = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, LastOutputValue ?? (object)_str);
+        return NodeResult.Success(_out);
     }
 
     // ── Полиморфный путь: DataPacket → Clipboard ──────────────────────────
@@ -218,11 +225,7 @@ public sealed class ClipboardNode : BaseNode
         {
             case ClipboardActionType.WriteText:
             {
-                DebugSink?.Invoke("[БУФЕР] Режим записи текста. Ищем данные на серебряном проводе...");
-                bool received = TryApplyContextInput<string>(nameof(TextToWrite), v => TextToWrite = v);
-                DebugSink?.Invoke(received
-                    ? $"[ВХОД] Данные приняты. Значение: \"{TextToWrite}\""
-                    : $"[ВХОД] Провод не подключён. Статическое значение: \"{TextToWrite}\"");
+                DebugSink?.Invoke($"[БУФЕР] Режим записи текста. Значение: \"{TextToWrite}\"");
 
                 // Empty Write Guard: пустая запись создаёт призрачную ячейку в истории Win+V.
                 if (string.IsNullOrWhiteSpace(TextToWrite))
@@ -349,11 +352,7 @@ public sealed class ClipboardNode : BaseNode
 
             case ClipboardImageAction.WriteImage:
             {
-                DebugSink?.Invoke("[БУФЕР] Запись изображения. Ищем путь на серебряном проводе...");
-                bool received = TryApplyContextInput<string>(nameof(TextToWrite), v => TextToWrite = v);
-                DebugSink?.Invoke(received
-                    ? $"[ВХОД] Путь принят: \"{TextToWrite}\""
-                    : $"[ВХОД] Провод не подключён. Путь: \"{TextToWrite}\"");
+                DebugSink?.Invoke($"[БУФЕР] Запись изображения. Путь: \"{TextToWrite}\"");
 
                 if (string.IsNullOrWhiteSpace(TextToWrite) || !File.Exists(TextToWrite))
                 {

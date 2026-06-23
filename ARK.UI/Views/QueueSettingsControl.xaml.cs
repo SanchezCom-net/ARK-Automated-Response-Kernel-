@@ -1,122 +1,90 @@
-using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using ARK.UI.ViewModels;
+using WpfMouseButtonEventArgs = System.Windows.Input.MouseButtonEventArgs;
 
 namespace ARK.UI.Views;
 
 public partial class QueueSettingsControl
 {
-    public QueueSettingsControl()
-    {
-        InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
-    }
+    public QueueSettingsControl() => InitializeComponent();
 
-    // ── DataContext lifecycle ─────────────────────────────────────────────
+    // ── Двойной клик: провалиться в регион ───────────────────────────────────
 
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (e.OldValue is QueueViewModel oldVm)
-            oldVm.PropertyChanged -= OnVmPropertyChanged;
-
-        if (e.NewValue is QueueViewModel newVm)
-            newVm.PropertyChanged += OnVmPropertyChanged;
-    }
-
-    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(QueueViewModel.SelectedExecutionMode))
-            SyncRadioButtons();
-    }
-
-    private void SyncRadioButtons()
+    private void OnListMouseDoubleClick(object sender, WpfMouseButtonEventArgs e)
     {
         if (DataContext is not QueueViewModel vm) return;
-        var mode = vm.SelectedExecutionMode;
-
-        _suppressModeChange = true;
-        try
-        {
-            RadioStrict.IsChecked     = mode == "StrictQueue";
-            RadioConcurrent.IsChecked = mode == "Concurrent";
-        }
-        finally
-        {
-            _suppressModeChange = false;
-        }
+        if (vm.SelectedItem is RegionListItemVm regionVm)
+            vm.DrillInto(regionVm);
     }
 
-    // ── TreeView: выбор узла ──────────────────────────────────────────────
+    // ── ПКМ на пустом фоне: динамическое меню ────────────────────────────────
 
-    private void OnTreeItemSelected(object sender, RoutedEventArgs e)
+    private void OnCreateRegionMenuClick(object sender, RoutedEventArgs e)
     {
         if (DataContext is not QueueViewModel vm) return;
-        if (sender is not TreeViewItem item) return;
-
-        e.Handled = true;
-
-        switch (item.DataContext)
-        {
-            case QueueRegionNodeVm regionVm:
-                vm.SelectedRegion    = regionVm.Region;
-                vm.SelectedFolder    = null;
-                vm.SelectedMacroNode = null;
-                break;
-
-            case QueueFolderNodeVm folderVm:
-                vm.SelectedRegion    = folderVm.ParentRegion;
-                vm.SelectedFolder    = folderVm.Folder;
-                vm.SelectedMacroNode = null;
-                break;
-
-            case QueueMacroRefNodeVm macroVm:
-                vm.SelectedRegion    = macroVm.ParentRegion;
-                vm.SelectedFolder    = null;
-                vm.SelectedMacroNode = macroVm;
-                break;
-        }
+        vm.AddRegionCommand.Execute(null);
     }
 
-    // ── Контекстное меню макроса ──────────────────────────────────────────
+    private void OnAddMacroContextMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not QueueViewModel vm) return;
+        vm.AddMacroCommand.Execute(null);
+    }
+
+    // ── ПКМ на регионе ────────────────────────────────────────────────────────
+
+    private static RegionListItemVm? GetRegionVm(object sender)
+    {
+        if (sender is MenuItem { Parent: ContextMenu { Tag: RegionListItemVm vm } }) return vm;
+        return null;
+    }
+
+    private void OnDrillIntoMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (GetRegionVm(sender) is not { } regionVm) return;
+        if (DataContext is not QueueViewModel vm) return;
+        vm.SelectedItem = regionVm;
+        vm.DrillInto(regionVm);
+    }
+
+    private void OnRenameRegionMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (GetRegionVm(sender) is not { } regionVm) return;
+        if (DataContext is not QueueViewModel vm) return;
+        vm.SelectedItem = regionVm;
+        vm.RenameRegionCommand.Execute(null);
+    }
+
+    private void OnDeleteRegionMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (GetRegionVm(sender) is not { } regionVm) return;
+        if (DataContext is not QueueViewModel vm) return;
+        vm.SelectedItem = regionVm;
+        vm.DeleteRegionCommand.Execute(null);
+    }
+
+    // ── ПКМ на макросе ────────────────────────────────────────────────────────
+
+    private static MacroQueueItemVm? GetMacroVm(object sender)
+    {
+        if (sender is MenuItem { Parent: ContextMenu { Tag: MacroQueueItemVm vm } }) return vm;
+        return null;
+    }
 
     private void OnSetPriorityMenuClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem menuItem) return;
-        if (menuItem.Parent is not ContextMenu menu) return;
-        if (menu.Tag is not QueueMacroRefNodeVm macroVm) return;
+        if (GetMacroVm(sender) is not { } macroVm) return;
         if (DataContext is not QueueViewModel vm) return;
-
-        vm.SelectedMacroNode = macroVm;
+        vm.SelectedItem = macroVm;
         vm.SetPriority(macroVm);
     }
 
     private void OnRemoveMacroMenuClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem menuItem) return;
-        if (menuItem.Parent is not ContextMenu menu) return;
-        if (menu.Tag is not QueueMacroRefNodeVm macroVm) return;
+        if (GetMacroVm(sender) is not { } macroVm) return;
         if (DataContext is not QueueViewModel vm) return;
-
-        vm.SelectedMacroNode = macroVm;
+        vm.SelectedItem = macroVm;
         vm.RemoveMacroCommand.Execute(null);
-    }
-
-    // ── RadioButton: режим выполнения ─────────────────────────────────────
-
-    private bool _suppressModeChange;
-
-    private void OnStrictQueueChecked(object sender, RoutedEventArgs e)
-    {
-        if (_suppressModeChange) return;
-        if (DataContext is QueueViewModel vm)
-            vm.SelectedExecutionMode = "StrictQueue";
-    }
-
-    private void OnConcurrentChecked(object sender, RoutedEventArgs e)
-    {
-        if (_suppressModeChange) return;
-        if (DataContext is QueueViewModel vm)
-            vm.SelectedExecutionMode = "Concurrent";
     }
 }

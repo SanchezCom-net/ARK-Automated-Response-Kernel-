@@ -1,4 +1,4 @@
-using ARK.UI.Core.Interfaces;
+using ARK.UI.Core.Bus;
 
 namespace ARK.UI.Core.Nodes;
 
@@ -42,18 +42,17 @@ public sealed class Win_BypassQueueNode : BaseNode
         }
     }
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider,
-        ILogService logger,
-        CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         var level = IgnoreAllRestrictions ? "SYSTEM LEVEL" : "EXCLUSIVE";
         var block = BlockOthersOnExecution ? " | блокировка активна" : string.Empty;
 
-        await logger.LogInfoAsync(nameof(Win_BypassQueueNode),
+        await NodeLogger!.LogInfoAsync(nameof(Win_BypassQueueNode),
             $"[{level}{block}] Макрос '{Name}' выполняется в приоритетном режиме.")
             .ConfigureAwait(false);
 
-        return true;
+        return NodeResult.Success(null);
     }
 }

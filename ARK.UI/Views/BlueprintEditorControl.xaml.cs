@@ -60,7 +60,9 @@ public partial class BlueprintEditorControl : UserControl
     private VisualNode?      _connectionSource;
     private bool             _connectionIsError;
     private bool             _connectionIsData;
-    private bool             _connectionFromInput;   // true = drag стартовал с "In" порта
+    private bool             _connectionIsCustomData;
+    private bool             _connectionIsBlackBox;
+    private bool             _connectionFromInput;   // true = drag стартовал с "In"/"InData" порта
     private WpfPoint         _connectionOrigin;
     private FrameworkElement? _snapTarget;
 
@@ -144,21 +146,23 @@ public partial class BlueprintEditorControl : UserControl
         var pos    = e.GetPosition(EditorCanvas);
 
         // Клик по выходному порту → начинаем протягивание связи.
-        if (origin is FrameworkElement { Tag: string tag } && tag is "Success" or "Error" or "Data")
+        if (origin is FrameworkElement { Tag: string tag }
+            && tag is "Success" or "Error" or "Data" or "CustomData" or "BlackBox")
         {
             var node = FindNodeFromSource(origin);
             if (node is null) return;
-            BeginConnectionDraw(node, tag == "Error", pos, tag == "Data");
+            BeginConnectionDraw(node, tag, pos);
             e.Handled = true;
             return;
         }
 
-        // Клик по входному порту → обратное перетаскивание для разрыва связи (Toggle).
-        if (origin is FrameworkElement { Tag: "In" })
+        // Клик по входному порту → обратное перетаскивание (Toggle).
+        if (origin is FrameworkElement { Tag: "In" or "InData" } inFe)
         {
             var node = FindNodeFromSource(origin);
             if (node is null) return;
-            BeginConnectionDrawFromInput(node, pos);
+            bool isDataInput = inFe.Tag?.ToString() == "InData";
+            BeginConnectionDrawFromInput(node, pos, isDataInput);
             e.Handled = true;
             return;
         }
@@ -267,7 +271,7 @@ public partial class BlueprintEditorControl : UserControl
 
         if (_isDrawingConnection)
         {
-            // Snap: при прямом drag — ищем "In" порт; при обратном — "Success"/"Error"/"Data".
+            // Snap: поиск только СОВМЕСТИМЫХ портов по типу (Signal vs Data).
             _snapTarget = FindSnapTarget(pos);
             var endPos  = pos;
             if (_snapTarget is not null)
@@ -277,15 +281,24 @@ public partial class BlueprintEditorControl : UserControl
                 {
                     if (_connectionFromInput)
                     {
-                        var tag       = _snapTarget.Tag?.ToString() ?? "Success";
-                        var (tx, ty)  = tag == "Data"  ? snapNode.DataPortCenter    :
-                                        tag == "Error" ? snapNode.ErrorPortCenter   :
-                                                         snapNode.SuccessPortCenter;
+                        // Обратный drag: из Input → ищем Output
+                        var tag = _snapTarget.Tag?.ToString() ?? "Success";
+                        var (tx, ty) = tag switch
+                        {
+                            "Error"      => snapNode.ErrorPortCenter,
+                            "Data"       => snapNode.DataPortCenter,
+                            "CustomData" => snapNode.CustomDataPortCenter,
+                            "BlackBox"   => snapNode.BlackBoxPortCenter,
+                            _            => snapNode.SuccessPortCenter
+                        };
                         endPos = new WpfPoint(tx, ty);
                     }
                     else
                     {
-                        var (tx, ty) = snapNode.InPortCenter;
+                        // Прямой drag: из Output → ищем Input
+                        var (tx, ty) = _connectionIsData
+                            ? snapNode.DataInPortCenter
+                            : snapNode.TriggerInPortCenter;
                         endPos = new WpfPoint(tx, ty);
                     }
                 }
@@ -324,22 +337,27 @@ public partial class BlueprintEditorControl : UserControl
                 var vm = DataContext as BlueprintEditorViewModel;
                 if (_connectionFromInput)
                 {
-                    // Обратное направление: стартовали с "In" → финишируем на выходном порту
+                    // Обратное: стартовали с "In"/"InData" → финишируем на выходном порту
                     var outputNode = FindNodeFromSource(snap);
                     if (outputNode is not null && CanConnect(outputNode, _connectionSource))
                     {
-                        var tag = snap.Tag?.ToString() ?? "Success";
+                        var tag       = snap.Tag?.ToString() ?? "Success";
+                        bool isErr    = tag == "Error";
+                        bool isData   = tag is "Data" or "CustomData" or "BlackBox";
+                        bool isCustom = tag == "CustomData";
+                        bool isBlack  = tag == "BlackBox";
                         vm?.ConnectNodes(outputNode.NodeId, _connectionSource.NodeId,
-                                         tag == "Error", tag == "Data");
+                                         isErr, isData, isCustom, isBlack);
                     }
                 }
                 else
                 {
-                    // Прямое направление: стартовали с выходного порта → финишируем на "In"
+                    // Прямое: стартовали с выходного порта → финишируем на "In"/"InData"
                     var targetNode = FindNodeFromSource(snap);
                     if (targetNode is not null && CanConnect(_connectionSource, targetNode))
                         vm?.ConnectNodes(_connectionSource.NodeId, targetNode.NodeId,
-                                         _connectionIsError, _connectionIsData);
+                                         _connectionIsError, _connectionIsData,
+                                         _connectionIsCustomData, _connectionIsBlackBox);
                 }
             }
             FinishConnectionDraw();
@@ -441,40 +459,55 @@ public partial class BlueprintEditorControl : UserControl
 
     // ══ Рисование связи ════════════════════════════════════════════════
 
-    private void BeginConnectionDrawFromInput(VisualNode targetNode, WpfPoint pos)
+    private void BeginConnectionDrawFromInput(VisualNode targetNode, WpfPoint pos, bool isData = false)
     {
-        _isDrawingConnection = true;
-        _connectionSource    = targetNode;
-        _connectionFromInput = true;
-        _connectionIsError   = false;
-        _connectionIsData    = false;
+        _isDrawingConnection  = true;
+        _connectionSource     = targetNode;
+        _connectionFromInput  = true;
+        _connectionIsError    = false;
+        _connectionIsData     = isData;
+        _connectionIsCustomData = false;
+        _connectionIsBlackBox   = false;
 
-        var (ox, oy)      = targetNode.InPortCenter;
+        var (ox, oy) = isData ? targetNode.DataInPortCenter : targetNode.TriggerInPortCenter;
         _connectionOrigin = new WpfPoint(ox, oy);
 
-        PreviewPath.Stroke     = new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xC0, 0xC0, 0xC0));
+        PreviewPath.Stroke = isData
+            ? new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD3, 0xD3, 0xD3))
+            : new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD4, 0xAF, 0x37));
         PreviewPath.Visibility = Visibility.Visible;
 
         UpdatePreviewPath(_connectionOrigin, pos);
         EditorCanvas.CaptureMouse();
     }
 
-    private void BeginConnectionDraw(VisualNode source, bool isError, WpfPoint pos, bool isData = false)
+    private void BeginConnectionDraw(VisualNode source, string sourceTag, WpfPoint pos)
     {
-        _isDrawingConnection = true;
-        _connectionSource    = source;
-        _connectionIsError   = isError;
-        _connectionIsData    = isData;
-        _connectionFromInput = false;   // явный сброс: предыдущий обратный drag не должен влиять
+        _isDrawingConnection  = true;
+        _connectionSource     = source;
+        _connectionFromInput  = false;
+        _connectionIsError    = sourceTag == "Error";
+        _connectionIsData     = sourceTag is "Data" or "CustomData" or "BlackBox";
+        _connectionIsCustomData = sourceTag == "CustomData";
+        _connectionIsBlackBox   = sourceTag == "BlackBox";
 
-        var (ox, oy) = isData  ? source.DataPortCenter    :
-                       isError ? source.ErrorPortCenter   :
-                                 source.SuccessPortCenter;
+        var (ox, oy) = sourceTag switch
+        {
+            "Error"      => source.ErrorPortCenter,
+            "Data"       => source.DataPortCenter,
+            "CustomData" => source.CustomDataPortCenter,
+            "BlackBox"   => source.BlackBoxPortCenter,
+            _            => source.SuccessPortCenter
+        };
         _connectionOrigin = new WpfPoint(ox, oy);
 
-        PreviewPath.Stroke     = isData  ? new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD3, 0xD3, 0xD3)) :
-                                 isError ? new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD3, 0x2F, 0x2F)) :
-                                           new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD4, 0xAF, 0x37));
+        PreviewPath.Stroke = sourceTag switch
+        {
+            "Data" or "CustomData" => new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD3, 0xD3, 0xD3)),
+            "BlackBox"             => new SolidColorBrush(WpfColor.FromArgb(0xAA, 0x5B, 0x9B, 0xD5)),
+            "Error"                => new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD3, 0x2F, 0x2F)),
+            _                     => new SolidColorBrush(WpfColor.FromArgb(0xAA, 0xD4, 0xAF, 0x37))
+        };
         PreviewPath.Visibility = Visibility.Visible;
 
         UpdatePreviewPath(_connectionOrigin, pos);
@@ -494,19 +527,23 @@ public partial class BlueprintEditorControl : UserControl
 
     private void FinishConnectionDraw()
     {
-        _snapTarget            = null;
-        _isDrawingConnection   = false;
-        _connectionSource      = null;
-        _connectionIsData      = false;
-        _connectionFromInput   = false;
-        PreviewPath.Visibility = Visibility.Collapsed;
-        PreviewPath.Data       = null;
+        _snapTarget             = null;
+        _isDrawingConnection    = false;
+        _connectionSource       = null;
+        _connectionIsError      = false;
+        _connectionIsData       = false;
+        _connectionIsCustomData = false;
+        _connectionIsBlackBox   = false;
+        _connectionFromInput    = false;
+        PreviewPath.Visibility  = Visibility.Collapsed;
+        PreviewPath.Data        = null;
         EditorCanvas.ReleaseMouseCapture();
     }
 
     // ══ Вспомогательные методы ══════════════════════════════════════════
 
-    // Ищет порт-цель под курсором: при прямом drag — "In"; при обратном — "Success"/"Error"/"Data".
+    // Ищет СОВМЕСТИМЫЙ порт под курсором (магнитное притяжение V3):
+    // Signal-провод → только Signal-порты; Data-провод → только Data-порты.
     private FrameworkElement? FindSnapTarget(WpfPoint canvasPos)
     {
         FrameworkElement? found = null;
@@ -517,10 +554,16 @@ public partial class BlueprintEditorControl : UserControl
             {
                 if (r.VisualHit is FrameworkElement fe)
                 {
-                    var tag     = fe.Tag?.ToString();
+                    var tag = fe.Tag?.ToString();
                     bool isMatch = _connectionFromInput
-                        ? tag is "Success" or "Error" or "Data"
-                        : tag == "In";
+                        // обратный drag: из Data In → только Data Out; из Trigger In → Success/Error
+                        ? (_connectionIsData
+                            ? tag is "Data" or "CustomData" or "BlackBox"
+                            : tag is "Success" or "Error")
+                        // прямой drag: из Data Out → только In Data; из Signal Out → только Trigger In
+                        : (_connectionIsData
+                            ? tag == "InData"
+                            : tag == "In");
                     if (isMatch) { found = fe; return HitTestResultBehavior.Stop; }
                 }
                 return HitTestResultBehavior.Continue;
@@ -551,14 +594,16 @@ public partial class BlueprintEditorControl : UserControl
         return false;
     }
 
-    // Глобальная валидация соединения портов:
-    // • выход → вход (соблюдается HitTest-логикой, здесь — страховка)
+    // Глобальная валидация соединения портов (страховка поверх HitTest-фильтрации):
     // • запрещено: один и тот же узел
-    // • запрещено: входящее соединение к TriggerRootNode (нет входного порта)
+    // • запрещено: входящее к TriggerRootNode (нет входного порта)
+    // • запрещено: MacroPolicyNode как источник или цель (пассивная нода, нет портов)
     private static bool CanConnect(VisualNode source, VisualNode target)
     {
         if (source.NodeId == target.NodeId) return false;
         if (target.LogicalNode is TriggerRootNode) return false;
+        if (source.LogicalNode is MacroPolicyNode) return false;
+        if (target.LogicalNode is MacroPolicyNode) return false;
         return true;
     }
 }

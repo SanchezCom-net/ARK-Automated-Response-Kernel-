@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
+using ARK.UI.Core.Bus;
 using ARK.UI.Core.Interfaces;
 using ARK.UI.Core.Models;
 using ARK.UI.Core.Services;
@@ -172,17 +173,24 @@ public sealed partial class Win_WindowManagerNode : BaseNode
 
     // ── Выполнение ──────────────────────────────────────────────────────────
 
-    protected override async Task<bool> ExecuteCoreAsync(
-        IServiceProvider serviceProvider, ILogService logger, CancellationToken cancellationToken)
+    protected override async Task<NodeResult> ExecuteCoreAsync(
+        DataBusPacket? inputPacket,
+        CancellationToken ct)
     {
         DebugSink?.Invoke($"[ОКНА] Управление окнами [{SelectedAction}]: запуск...");
 
-        bool hasInput = TryApplyContextInput<string>(nameof(InputValue), v => InputValue = v);
+        bool _hasInput = false;
+        if (inputPacket is { Type: not PortDataType.Signal } && DataBus is not null
+            && DataBus.TryGet(inputPacket.SessionId, inputPacket.DataId, out var _raw))
+        {
+            var _s = _raw as string ?? _raw?.ToString();
+            if (_s is not null) { InputValue = _s; _hasInput = true; }
+        }
 
-        if (hasInput && !string.IsNullOrWhiteSpace(InputValue))
-            DebugSink?.Invoke($"[ВХОД] Динамический процесс по проводу: «{InputValue}»");
+        if (_hasInput && !string.IsNullOrWhiteSpace(InputValue))
+            DebugSink?.Invoke($"[ВХОД] Динамический процесс с DataBus: «{InputValue}»");
         else
-            DebugSink?.Invoke("[ВХОД] Входящих данных по серебряному проводу не обнаружено.");
+            DebugSink?.Invoke("[ВХОД] Входящих данных на DataBus нет.");
 
         // Режим "Все окна / Системная сетка"
         if (IsAllWindowsMode)
@@ -190,15 +198,15 @@ public sealed partial class Win_WindowManagerNode : BaseNode
             DebugSink?.Invoke($"[СИСТЕМА] Глобальное действие над всеми окнами: [{SelectedAction}]...");
             bool ok = SelectedAction switch
             {
-                WinWindowAction.MinimizeAll    => await MinimizeAllAsync(logger).ConfigureAwait(false),
-                WinWindowAction.RestoreAll     => await RestoreAllAsync(logger).ConfigureAwait(false),
-                WinWindowAction.TileVertical   => await TileAsync(0x0000, logger).ConfigureAwait(false),
-                WinWindowAction.TileHorizontal => await TileAsync(0x0001, logger).ConfigureAwait(false),
-                WinWindowAction.Cascade        => await CascadeAsync(logger).ConfigureAwait(false),
+                WinWindowAction.MinimizeAll    => await MinimizeAllAsync(NodeLogger!).ConfigureAwait(false),
+                WinWindowAction.RestoreAll     => await RestoreAllAsync(NodeLogger!).ConfigureAwait(false),
+                WinWindowAction.TileVertical   => await TileAsync(0x0000, NodeLogger!).ConfigureAwait(false),
+                WinWindowAction.TileHorizontal => await TileAsync(0x0001, NodeLogger!).ConfigureAwait(false),
+                WinWindowAction.Cascade        => await CascadeAsync(NodeLogger!).ConfigureAwait(false),
                 _                              => false
             };
             DebugSink?.Invoke($"[ОКНА] Глобальное действие: {(ok ? "Успех ✓" : "Ошибка ✗")}");
-            return ok;
+            return ok ? NodeResult.Success(null) : NodeResult.Failure($"Глобальное действие [{SelectedAction}] не выполнено.");
         }
 
         // Формируем список целей из ProcessesList + серебряный провод
@@ -227,8 +235,8 @@ public sealed partial class Win_WindowManagerNode : BaseNode
         if (targets.Count == 0)
         {
             DebugSink?.Invoke("[ОКНА] [ОТМЕНА] Список процессов пуст.");
-            await logger.LogWarningAsync(Name, "[ОКНА] WindowManager: имя процесса не задано.").ConfigureAwait(false);
-            return false;
+            await NodeLogger!.LogWarningAsync(Name, "[ОКНА] WindowManager: имя процесса не задано.").ConfigureAwait(false);
+            return NodeResult.Failure("Имя процесса не задано.");
         }
 
         bool allSuccess = true;
@@ -239,12 +247,12 @@ public sealed partial class Win_WindowManagerNode : BaseNode
             bool ok;
             try
             {
-                ok = await ExecuteWindowActionAsync(target, logger, cancellationToken).ConfigureAwait(false);
+                ok = await ExecuteWindowActionAsync(target, NodeLogger!, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 DebugSink?.Invoke($"[СИСТЕМА] [ОШИБКА] Сбой «{target}»: {ex.Message}");
-                await logger.LogErrorAsync(Name, $"[ОКНА] Сбой «{target}».", ex).ConfigureAwait(false);
+                await NodeLogger!.LogErrorAsync(Name, $"[ОКНА] Сбой «{target}».", ex).ConfigureAwait(false);
                 ok = false;
             }
 
@@ -252,20 +260,25 @@ public sealed partial class Win_WindowManagerNode : BaseNode
             else    allSuccess = false;
         }
 
-        if (allSuccess && IsDataOutputEnabled && outputName is not null)
-        {
-            string payload = outputName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? outputName : outputName + ".exe";
-            LastOutputValue = new DataPacket { Type = DataType.Text, Payload = payload };
-            DebugSink?.Invoke($"[ВЫХОД] Записано в серебряный порт: «{payload}»");
-        }
-
         DebugSink?.Invoke($"[ОКНА] [{SelectedAction}] завершён. Статус: {(allSuccess ? "Успех ✓" : "Ошибка ✗")}");
-        await logger.LogInfoAsync(Name,
+        await NodeLogger!.LogInfoAsync(Name,
             $"[ОКНА] WindowManager [{SelectedAction}] → {(allSuccess ? "УСПЕХ" : "ОШИБКА")}")
             .ConfigureAwait(false);
 
-        return allSuccess;
+        if (!allSuccess) return NodeResult.Failure($"WindowManager [{SelectedAction}] завершился с ошибкой.");
+
+        string _payload = outputName is not null
+            ? (outputName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? outputName : outputName + ".exe")
+            : string.Empty;
+        if (!string.IsNullOrEmpty(_payload))
+        {
+            LastOutputValue = new DataPacket { Type = DataType.Text, Payload = _payload };
+            DebugSink?.Invoke($"[ВЫХОД] DataBus записан: «{_payload}»");
+        }
+        var _sid = inputPacket?.SessionId ?? Guid.NewGuid();
+        var _out = DataBusPacket.Text(_sid);
+        DataBus?.Set(_out.SessionId, _out.DataId, _payload);
+        return NodeResult.Success(_out);
     }
 
     // ── Одиночное окно ──────────────────────────────────────────────────────
